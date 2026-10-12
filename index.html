@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1c1310">
+<title>Partykeller Gruppe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;700&display=swap">
+<style>
+:root{--wood:#1c1310;--line:#4a3226;--amber:#f2b45c;--cream:#efe2cf;--muted:#b49d86;--pink:#ff4fa3;--teal:#3ff0e0;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--wood);color:var(--cream);font:16px/1.55 "Karla",system-ui,sans-serif;
+  background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.018) 0 2px,transparent 2px 88px),radial-gradient(ellipse at 50% 0%,rgba(242,180,92,.16),transparent 60%);
+  display:grid;place-items:center;padding:24px 16px;text-align:center}
+.lights{display:flex;justify-content:space-between;width:min(420px,90vw);margin:0 auto 24px;height:22px;position:relative}
+.lights::before{content:"";position:absolute;left:0;right:0;top:4px;height:10px;border-bottom:1px solid #6b4a36;border-radius:0 0 50% 50%}
+.lights i{width:8px;height:12px;margin-top:9px;border-radius:50% 50% 45% 45%;background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.lights i:nth-child(3n+2){background:var(--pink);box-shadow:0 0 10px var(--pink)}
+.lights i:nth-child(3n){background:var(--teal);box-shadow:0 0 10px var(--teal)}
+@media (prefers-reduced-motion:no-preference){.lights i{animation:g 3.2s ease-in-out infinite}.lights i:nth-child(odd){animation-delay:1.6s}.sign{animation:f 6s infinite}}
+@keyframes g{50%{opacity:.55}}
+@keyframes f{0%,92%,100%{opacity:1}93%{opacity:.4}94%{opacity:1}95%{opacity:.6}}
+.sign{font-family:"Monoton","Bungee",sans-serif;font-weight:400;font-size:clamp(2.2rem,11vw,4.5rem);line-height:1.05;margin:0;color:#ffd9ec;
+  text-shadow:0 0 6px var(--pink),0 0 18px var(--pink),0 0 40px rgba(255,79,163,.6)}
+.sub{font-family:"Bungee",sans-serif;color:var(--teal);letter-spacing:.25em;font-size:.8rem;margin-top:10px;text-shadow:0 0 8px rgba(63,240,224,.6)}
+p{color:var(--muted);max-width:30ch;margin:28px auto 0}
+</style>
+</head>
+<body>
+<main>
+  <div class="lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <h1 class="sign">Partykeller</h1>
+  <div class="sub">GRUPPE</div>
+  <p>Hier wird gerade umgebaut. Bald gibt es Termine, Abstimmungen und die Wall of Fame.</p>
+</main>
+</body>
+</html>
