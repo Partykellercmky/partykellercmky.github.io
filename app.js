@@ -229,9 +229,12 @@ function renderInstall() {
   const hidden = store.get("pk-install-hidden") === "1";
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
   $("#install-card").hidden = standalone || hidden;
+  const samsung = /SamsungBrowser/i.test(navigator.userAgent);
   $("#install-text").textContent = ios
     ? "In Safari unten auf Teilen tippen und dann auf „Zum Home-Bildschirm“."
-    : "Im Browser-Menü (drei Punkte) auf „App installieren“ oder „Zum Startbildschirm hinzufügen“ tippen.";
+    : samsung
+      ? "Unten rechts auf das Menü (drei Striche) tippen, dann „Seite hinzufügen zu“ und „Startbildschirm“."
+      : "Oben rechts auf die drei Punkte tippen, dann „App installieren“ oder „Zum Startbildschirm hinzufügen“. Im Samsung-Browser: Menü unten rechts, „Seite hinzufügen zu“, „Startbildschirm“.";
 }
 
 /* ---------- Aktionen ---------- */
