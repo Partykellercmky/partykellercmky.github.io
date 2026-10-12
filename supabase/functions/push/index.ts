@@ -3,7 +3,18 @@
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
-const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+// Geheimer Server-Schluessel: je nach Projekt unter einem anderen Namen hinterlegt
+function serverKey(): string {
+  const direct = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SECRET_KEY");
+  if (direct) return direct;
+  try {
+    const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}");
+    const first = Object.values(keys)[0];
+    if (typeof first === "string") return first;
+  } catch { /* ignorieren */ }
+  throw new Error("Kein Server-Schluessel gefunden");
+}
+const db = createClient(Deno.env.get("SUPABASE_URL")!, serverKey(), { auth: { persistSession: false } });
 webpush.setVapidDetails("https://partykellercmky.github.io", Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
 
 const TZ = "Europe/Berlin";
