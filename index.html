@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <div class="wrap">
@@ -72,6 +72,7 @@
       <section id="push-card" class="card push" hidden>
         <div class="push-txt"><b>Benachrichtigungen</b><p id="push-text"></p></div>
         <button class="btn" type="button" id="push-btn" data-action="push-toggle">Aktivieren</button>
+        <label class="switch-row" id="chat-push-row" for="chat-push" hidden><input type="checkbox" id="chat-push"> Auch bei neuen Chat-Nachrichten</label>
       </section>
       <section>
         <h2>Wer drin ist</h2>
@@ -126,6 +127,17 @@
       </section>
     </div>
 
+    <div id="view-chat" class="view" hidden>
+      <section>
+        <h2>Chat</h2>
+        <div id="chat-list" class="chat-list" aria-live="polite"></div>
+      </section>
+      <form id="chat-form" class="chat-form">
+        <input id="chat-input" maxlength="1000" placeholder="Nachricht schreiben …" autocomplete="off" enterkeyhint="send" aria-label="Nachricht">
+        <button class="btn" type="submit" id="chat-send">Senden</button>
+      </form>
+    </div>
+
     <div id="view-wall" class="view" hidden>
       <section>
         <h2>Zitate-Wand</h2>
@@ -176,14 +188,15 @@
 </div>
 
 <nav id="tabs" role="tablist" aria-label="Bereiche" hidden>
-  <button role="tab" data-tab="gruppe" aria-selected="true">Die Gruppe</button>
+  <button role="tab" data-tab="gruppe" aria-selected="true">Gruppe</button>
   <button role="tab" data-tab="termine" aria-selected="false">Termine</button>
+  <button role="tab" data-tab="chat" aria-selected="false">Chat<span class="badge" id="chat-badge" hidden></span></button>
   <button role="tab" data-tab="wall" aria-selected="false">Wall of Fame</button>
   <button role="tab" data-tab="admin" aria-selected="false" id="tab-admin" hidden>Admin<span class="badge" id="req-badge" hidden></span></button>
 </nav>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

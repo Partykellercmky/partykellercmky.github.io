@@ -90,6 +90,7 @@ async function boot() {
     $("#tab-admin").hidden = !me?.is_admin;
     show("app");
     render();
+    startRealtime();
   } catch (err) { show("login"); fail(err); }
 }
 
@@ -106,11 +107,12 @@ async function load(myId = me?.id) {
   const q = (t, sel = "*") => db.from(t).select(sel);
   const res = await Promise.all([
     q("members", "id,name,bio,is_admin,user_id"), q("events"), q("rsvps"), q("polls"), q("poll_options"), q("poll_votes"),
-    q("quotes"), q("rankings"), q("ranking_votes")
+    q("quotes"), q("rankings"), q("ranking_votes"),
+    db.from("messages").select("*").order("created_at", { ascending: false }).limit(300)
   ]);
   const err = res.find(r => r.error); if (err) throw err.error;
-  const [members, events, rsvps, polls, options, pvotes, quotes, rankings, rvotes] = res.map(r => r.data);
-  S = { members: members.sort((a, b) => (b.is_admin - a.is_admin) || a.id - b.id), events, rsvps, polls, options, pvotes, quotes, rankings, rvotes, requests: [] };
+  const [members, events, rsvps, polls, options, pvotes, quotes, rankings, rvotes, msgs] = res.map(r => r.data);
+  S = { members: members.sort((a, b) => (b.is_admin - a.is_admin) || a.id - b.id), events, rsvps, polls, options, pvotes, quotes, rankings, rvotes, messages: msgs.reverse(), requests: [] };
   if (members.find(m => m.id === myId)?.is_admin) {
     const { data } = await db.from("join_requests").select("*").order("created_at");
     S.requests = data || [];
@@ -131,7 +133,7 @@ const nameOf = id => S.members.find(m => m.id === id)?.name || "Ehemaliges Mitgl
 const canDelete = createdBy => me && (createdBy === me.id || me.is_admin);
 
 /* ---------- Anzeige ---------- */
-function render() { renderPush(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); }
+function render() { renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); }
 
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;
@@ -251,6 +253,7 @@ async function currentSub() {
 }
 async function renderPush() {
   const card = $("#push-card"), text = $("#push-text"), btn = $("#push-btn");
+  $("#chat-push-row").hidden = true;
   card.hidden = false; btn.hidden = false; card.classList.remove("on");
   if (isIOS && !isStandalone()) { text.textContent = "Leg die App zuerst auf den Home-Bildschirm und öffne sie von dort. Dann kannst du Benachrichtigungen einschalten."; btn.hidden = true; return; }
   if (!pushSupported) { text.textContent = "Dein Browser kann leider keine Benachrichtigungen empfangen."; btn.hidden = true; return; }
@@ -264,7 +267,12 @@ async function renderPush() {
     db.rpc("save_push", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth }).then(({ error }) => { if (error) console.warn(error); });
   }
   card.classList.toggle("on", pushOn);
-  text.textContent = pushOn ? "Sind auf diesem Gerät an: neue Termine, Erinnerungen am Vortag und neue Abstimmungen." : "Bekomm Bescheid bei neuen Terminen, neuen Abstimmungen und am Tag vor einem Treffen.";
+  text.textContent = pushOn ? "Sind auf diesem Gerät an: neue Termine, Erinnerungen am Vortag und neue Abstimmungen." : "Bekomm Bescheid bei neuen Terminen, Abstimmungen, Chat-Nachrichten und am Tag vor einem Treffen.";
+  $("#chat-push-row").hidden = !pushOn;
+  if (pushOn) {
+    const { data } = await db.from("push_subscriptions").select("chat").eq("endpoint", sub.endpoint).maybeSingle();
+    $("#chat-push").checked = data ? data.chat !== false : true;
+  }
   btn.textContent = pushOn ? "Ausschalten" : "Aktivieren";
   btn.classList.toggle("ghost", pushOn);
 }
@@ -294,6 +302,77 @@ async function togglePush() {
   finally { btn.disabled = false; renderPush(); }
 }
 
+
+/* ---------- Chat ---------- */
+const chatVisible = () => !$("#view-chat").hidden && !$("#screen-app").hidden;
+const nearBottom = () => window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
+const toBottom = () => requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight }));
+const fmtTime = iso => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+function dayLabel(iso) {
+  const d = new Date(iso), t = new Date(), y = new Date(); y.setDate(t.getDate() - 1);
+  if (d.toDateString() === t.toDateString()) return "Heute";
+  if (d.toDateString() === y.toDateString()) return "Gestern";
+  return fmtDate(iso);
+}
+let openMsg = null;
+function renderChat() {
+  if (!S.messages) return;
+  const stick = chatVisible() && nearBottom();
+  let lastDay = "", lastWho = null, html = "";
+  for (const m of S.messages) {
+    const day = new Date(m.created_at).toDateString();
+    if (day !== lastDay) { html += `<div class="chat-day">${dayLabel(m.created_at)}</div>`; lastDay = day; lastWho = null; }
+    const mine = m.member_id === me.id, can = mine || me.is_admin;
+    html += `<div class="msg${mine ? " mine" : ""}">${!mine && lastWho !== m.member_id ? `<span class="who">${esc(nameOf(m.member_id))}</span>` : ""}
+      <button type="button" class="bubble${can ? " can" : ""}" ${can ? `data-msg="${m.id}"` : "tabindex=\"-1\""}>${esc(m.text)}<time>${fmtTime(m.created_at)}</time></button>
+      ${openMsg === m.id ? `<button class="link danger" data-del="msg" data-id="${m.id}">Löschen</button>` : ""}</div>`;
+    lastWho = m.member_id;
+  }
+  $("#chat-list").innerHTML = html || `<div class="empty">Noch ist es still im Keller. Schreib die erste Nachricht.</div>`;
+  if (chatVisible()) { markChatSeen(); if (stick || !renderChat.done) toBottom(); renderChat.done = true; }
+  updateChatBadge();
+}
+function lastMsgId() { return S.messages?.length ? S.messages[S.messages.length - 1].id : 0; }
+function markChatSeen() { store.set("pk-chat-seen", String(lastMsgId())); }
+function updateChatBadge() {
+  const seen = +(store.get("pk-chat-seen") || 0);
+  const n = (S.messages || []).filter(m => m.id > seen && m.member_id !== me?.id).length;
+  const b = $("#chat-badge"); b.hidden = !n || chatVisible(); b.textContent = n > 99 ? "99+" : n;
+}
+let chatChannel = null;
+async function startRealtime() {
+  if (chatChannel) return;
+  const { data: { session } } = await db.auth.getSession();
+  if (session) { try { await db.realtime.setAuth(session.access_token); } catch {} }
+  chatChannel = db.channel("partykeller-chat")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, ({ new: m }) => {
+      if (!S.messages || S.messages.some(x => x.id === m.id)) return;
+      S.messages.push(m); renderChat();
+    })
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, ({ old }) => {
+      if (!S.messages) return;
+      S.messages = S.messages.filter(x => x.id !== old.id); renderChat();
+    })
+    .subscribe();
+}
+$("#chat-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const input = $("#chat-input"), text = input.value.trim(); if (!text) return;
+  const btn = $("#chat-send"); btn.disabled = true;
+  const { data, error } = await db.from("messages").insert({ member_id: me.id, text }).select().single();
+  btn.disabled = false;
+  if (error) return fail(error);
+  input.value = ""; input.focus();
+  if (!S.messages.some(x => x.id === data.id)) S.messages.push(data);
+  renderChat(); toBottom();
+});
+$("#chat-push").addEventListener("change", async e => {
+  const sub = await currentSub(); if (!sub) return;
+  const { error } = await db.rpc("set_push_chat", { p_endpoint: sub.endpoint, p_on: e.target.checked });
+  if (error) { e.target.checked = !e.target.checked; return fail(error); }
+  toast(e.target.checked ? "Chat-Benachrichtigungen an" : "Chat stummgeschaltet");
+});
+
 /* ---------- Aktionen ---------- */
 const pendingDelete = new Set();
 document.addEventListener("click", async e => {
@@ -302,9 +381,11 @@ document.addEventListener("click", async e => {
     $$("[data-tab]").forEach(b => b.setAttribute("aria-selected", b === t));
     $$(".view").forEach(v => v.hidden = v.id !== "view-" + t.dataset.tab);
     store.set("pk-tab", t.dataset.tab);
-    window.scrollTo({ top: 0 });
+    if (t.dataset.tab === "chat") { renderChat.done = false; if (S.messages) renderChat(); } else window.scrollTo({ top: 0 });
+    updateChatBadge();
     return;
   }
+  if (t.dataset.msg) { openMsg = openMsg === +t.dataset.msg ? null : +t.dataset.msg; return renderChat(); }
   const a = t.dataset.action;
   if (a === "logout") return logout();
   if (a === "push-toggle") return togglePush();
@@ -335,7 +416,7 @@ document.addEventListener("click", async e => {
       return;
     }
     pendingDelete.delete(key);
-    const table = { event: "events", poll: "polls", quote: "quotes", rank: "rankings" }[t.dataset.del];
+    const table = { event: "events", poll: "polls", quote: "quotes", rank: "rankings", msg: "messages" }[t.dataset.del];
     return run(db.from(table).delete().eq("id", +t.dataset.id), "Gelöscht");
   }
   if (t.dataset.approve) {
@@ -398,7 +479,7 @@ setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 60
 
 /* Letzten Bereich merken */
 const hashTab = location.hash.slice(1);
-const lastTab = ["termine", "wall", "gruppe", "admin"].includes(hashTab) ? hashTab : store.get("pk-tab");
+const lastTab = ["termine", "chat", "wall", "gruppe", "admin"].includes(hashTab) ? hashTab : store.get("pk-tab");
 if (lastTab && (lastTab !== "admin" || hashTab === "admin")) { const b = document.querySelector(`[data-tab="${lastTab}"]`); if (b) b.click(); }
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

@@ -165,3 +165,20 @@ nav button[aria-selected="true"]{background:var(--amber);color:var(--wood)}
 }
 .toast{position:fixed;z-index:20;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:calc(100% - 32px);background:var(--amber);color:var(--wood);font-weight:700;padding:10px 16px;border-radius:999px;text-align:center}
 .toast.bad{background:var(--red)}
+
+/* Chat */
+.switch-row{flex-basis:100%;display:flex;align-items:center;gap:10px;min-height:44px;color:var(--cream);font-size:.95rem;cursor:pointer}
+.switch-row input{width:22px;height:22px;min-height:0;accent-color:var(--teal);flex:none}
+.chat-list{display:flex;flex-direction:column;gap:4px;padding-bottom:84px}
+.chat-day{align-self:center;margin:14px 0 6px;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--wood-2);border:1px solid var(--line);border-radius:999px;padding:2px 12px}
+.msg{max-width:82%;align-self:flex-start;display:flex;flex-direction:column;gap:2px}
+.msg.mine{align-self:flex-end;align-items:flex-end}
+.msg .who{font-size:.78rem;color:var(--amber);margin:8px 0 0 12px;display:block}
+.bubble{font:inherit;text-align:left;color:var(--cream);background:var(--wood-2);border:1px solid var(--line);border-radius:16px 16px 16px 4px;padding:8px 12px;white-space:pre-wrap;overflow-wrap:anywhere;cursor:default}
+.msg.mine .bubble{background:#4a1a33;border-color:rgba(255,79,163,.5);border-radius:16px 16px 4px 16px}
+.bubble.can{cursor:pointer}
+.bubble time{display:block;font-size:.7rem;color:var(--muted);margin-top:2px;text-align:right;font-variant-numeric:tabular-nums}
+.msg .link.danger{padding:4px 0;min-height:32px;font-size:.85rem}
+.chat-form{position:fixed;z-index:9;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;padding:8px 16px;background:rgba(28,19,16,.97);border-top:1px solid var(--line)}
+.chat-form input{flex:1}
+@media (min-width:701px){.chat-form{left:50%;right:auto;transform:translateX(-50%);width:min(828px,calc(100% - 32px));bottom:92px;border:1px solid var(--line);border-radius:12px}}

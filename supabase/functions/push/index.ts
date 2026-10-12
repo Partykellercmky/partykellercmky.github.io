@@ -28,10 +28,10 @@ const berlinDate = (offsetDays: number) => {
 };
 
 type Msg = { title: string; body: string; url: string; tag: string };
-type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; auth: string };
+type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; auth: string; chat?: boolean };
 
 async function subsFor(filter: (s: Sub) => boolean): Promise<Sub[]> {
-  const { data, error } = await db.from("push_subscriptions").select("id,member_id,endpoint,p256dh,auth");
+  const { data, error } = await db.from("push_subscriptions").select("*");
   if (error) throw error;
   return (data as Sub[]).filter(filter);
 }
@@ -78,6 +78,15 @@ Deno.serve(async (req) => {
       const adminIds = new Set((admins || []).map((a: { id: number }) => a.id));
       const subs = await subsFor((s) => adminIds.has(s.member_id));
       return Response.json(await send(subs, { title: "Neue Beitrittsanfrage", body: (r?.name || "Jemand") + " möchte in den Partykeller.", url: "./#admin", tag: "request-" + id }));
+    }
+    if (type === "chat") {
+      const { data: m, error } = await db.from("messages").select("text,member_id").eq("id", id).maybeSingle();
+      if (error) throw error;
+      if (!m) return Response.json({ skipped: true, grund: "Nachricht " + id + " nicht gefunden" });
+      const { data: who } = await db.from("members").select("name").eq("id", m.member_id).maybeSingle();
+      const text = m.text.length > 140 ? m.text.slice(0, 137) + "…" : m.text;
+      const subs = await subsFor((s) => s.member_id !== m.member_id && s.chat !== false);
+      return Response.json(await send(subs, { title: (who?.name || "Jemand") + " im Partykeller-Chat", body: text, url: "./#chat", tag: "chat-" + id }));
     }
     if (type === "reminder") {
       const tomorrow = berlinDate(1);
