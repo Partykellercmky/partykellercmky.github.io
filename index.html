@@ -5,36 +5,181 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#1c1310">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Partykeller">
 <title>Partykeller Gruppe</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;700&display=swap">
-<style>
-:root{--wood:#1c1310;--line:#4a3226;--amber:#f2b45c;--cream:#efe2cf;--muted:#b49d86;--pink:#ff4fa3;--teal:#3ff0e0;color-scheme:dark}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--wood);color:var(--cream);font:16px/1.55 "Karla",system-ui,sans-serif;
-  background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.018) 0 2px,transparent 2px 88px),radial-gradient(ellipse at 50% 0%,rgba(242,180,92,.16),transparent 60%);
-  display:grid;place-items:center;padding:24px 16px;text-align:center}
-.lights{display:flex;justify-content:space-between;width:min(420px,90vw);margin:0 auto 24px;height:22px;position:relative}
-.lights::before{content:"";position:absolute;left:0;right:0;top:4px;height:10px;border-bottom:1px solid #6b4a36;border-radius:0 0 50% 50%}
-.lights i{width:8px;height:12px;margin-top:9px;border-radius:50% 50% 45% 45%;background:var(--amber);box-shadow:0 0 10px var(--amber)}
-.lights i:nth-child(3n+2){background:var(--pink);box-shadow:0 0 10px var(--pink)}
-.lights i:nth-child(3n){background:var(--teal);box-shadow:0 0 10px var(--teal)}
-@media (prefers-reduced-motion:no-preference){.lights i{animation:g 3.2s ease-in-out infinite}.lights i:nth-child(odd){animation-delay:1.6s}.sign{animation:f 6s infinite}}
-@keyframes g{50%{opacity:.55}}
-@keyframes f{0%,92%,100%{opacity:1}93%{opacity:.4}94%{opacity:1}95%{opacity:.6}}
-.sign{font-family:"Monoton","Bungee",sans-serif;font-weight:400;font-size:clamp(2.2rem,11vw,4.5rem);line-height:1.05;margin:0;color:#ffd9ec;
-  text-shadow:0 0 6px var(--pink),0 0 18px var(--pink),0 0 40px rgba(255,79,163,.6)}
-.sub{font-family:"Bungee",sans-serif;color:var(--teal);letter-spacing:.25em;font-size:.8rem;margin-top:10px;text-shadow:0 0 8px rgba(63,240,224,.6)}
-p{color:var(--muted);max-width:30ch;margin:28px auto 0}
-</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css?v=1">
 </head>
 <body>
-<main>
-  <div class="lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-  <h1 class="sign">Partykeller</h1>
-  <div class="sub">GRUPPE</div>
-  <p>Hier wird gerade umgebaut. Bald gibt es Termine, Abstimmungen und die Wall of Fame.</p>
-</main>
+<div class="wrap">
+  <div class="lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <header>
+    <h1 class="sign">Partykeller</h1>
+    <div class="sub">GRUPPE</div>
+  </header>
+
+  <!-- Laden -->
+  <div id="screen-loading" class="center muted">Licht geht an …</div>
+
+  <!-- Login -->
+  <div id="screen-login" class="card narrow" hidden>
+    <div class="seg" role="tablist">
+      <button type="button" id="mode-login" class="on" data-mode="login">Einloggen</button>
+      <button type="button" id="mode-signup" data-mode="signup">Neu hier</button>
+    </div>
+    <form id="login-form" class="stack">
+      <label for="login-email">E-Mail</label>
+      <input id="login-email" type="email" autocomplete="email" required>
+      <label for="login-pw">Passwort</label>
+      <input id="login-pw" type="password" autocomplete="current-password" minlength="6" required>
+      <p id="login-hint" class="hint">Mit deiner E-Mail und deinem Passwort.</p>
+      <button class="btn" type="submit" id="login-submit">Einloggen</button>
+      <p id="login-error" class="error" hidden></p>
+    </form>
+  </div>
+
+  <!-- Anfrage stellen / warten -->
+  <div id="screen-request" class="card narrow" hidden>
+    <h2>Fast drin</h2>
+    <p>Wie heißt du in der Gruppe? Gerrit schaltet dich dann frei.</p>
+    <form id="request-form" class="stack">
+      <label for="request-name">Dein Name</label>
+      <input id="request-name" maxlength="40" required autocomplete="given-name">
+      <button class="btn" type="submit">Anfrage schicken</button>
+    </form>
+    <button class="link" type="button" data-action="logout">Abmelden</button>
+  </div>
+  <div id="screen-waiting" class="card narrow" hidden>
+    <h2>Anfrage ist raus</h2>
+    <p>Du hast dich als <b id="waiting-name"></b> gemeldet. Sobald Gerrit dich freischaltet, geht es hier weiter.</p>
+    <div class="row"><button class="btn ghost" type="button" data-action="recheck">Nochmal prüfen</button><button class="link" type="button" data-action="logout">Abmelden</button></div>
+  </div>
+
+  <!-- App -->
+  <main id="screen-app" hidden>
+    <div id="view-gruppe" class="view">
+      <section id="install-card" class="card install" hidden>
+        <div><b>Als App aufs Handy</b><p id="install-text"></p></div>
+        <button class="link" type="button" data-action="hide-install">Ausblenden</button>
+      </section>
+      <section>
+        <h2>Wer drin ist</h2>
+        <p class="lead" id="members-lead"></p>
+        <div class="members" id="members"></div>
+      </section>
+      <section class="card me">
+        <h3>Dein Steckbrief</h3>
+        <form id="bio-form" class="inline">
+          <input id="bio-input" maxlength="60" placeholder="z. B. der DJ, kommt immer zu spät …" aria-label="Dein Steckbrief">
+          <button class="btn" type="submit">Speichern</button>
+        </form>
+        <button class="link" type="button" data-action="logout">Abmelden</button>
+      </section>
+    </div>
+
+    <div id="view-termine" class="view" hidden>
+      <section>
+        <div class="head"><h2>Nächste Treffen</h2></div>
+        <details class="new" id="new-event">
+          <summary>Neuer Termin</summary>
+          <form id="event-form" class="stack">
+            <label for="ev-title">Was?</label>
+            <input id="ev-title" maxlength="80" required placeholder="Kellerabend">
+            <label for="ev-day">Wann?</label>
+            <input id="ev-day" type="date" required>
+            <label for="ev-info">Infos</label>
+            <input id="ev-info" maxlength="200" placeholder="Ab 20 Uhr, jeder bringt was mit">
+            <button class="btn" type="submit">Termin anlegen</button>
+          </form>
+        </details>
+        <div class="panel" id="events"></div>
+        <details class="past" id="past-wrap" hidden><summary id="past-label">Vergangene Treffen</summary><div class="panel" id="events-past"></div></details>
+      </section>
+      <section>
+        <h2>Abstimmungen</h2>
+        <details class="new" id="new-poll">
+          <summary>Neue Abstimmung</summary>
+          <form id="poll-form" class="stack">
+            <label for="poll-q">Frage</label>
+            <input id="poll-q" maxlength="120" required placeholder="Freitag oder Samstag?">
+            <span class="label">Antworten</span>
+            <div id="poll-opts" class="stack tight">
+              <input class="poll-opt" id="poll-opt-1" maxlength="60" required placeholder="Antwort 1" aria-label="Antwort 1">
+              <input class="poll-opt" id="poll-opt-2" maxlength="60" required placeholder="Antwort 2" aria-label="Antwort 2">
+            </div>
+            <button class="link left" type="button" data-action="add-opt">+ Antwort hinzufügen</button>
+            <button class="btn" type="submit">Abstimmung starten</button>
+          </form>
+        </details>
+        <div class="panel" id="polls"></div>
+      </section>
+    </div>
+
+    <div id="view-wall" class="view" hidden>
+      <section>
+        <h2>Zitate-Wand</h2>
+        <p class="lead">Was im Keller gesagt wird, bleibt an der Wand.</p>
+        <form class="stack card" id="quote-form">
+          <label for="quote-text">Was wurde gesagt?</label>
+          <input id="quote-text" maxlength="200" required>
+          <label for="quote-who">Von wem?</label>
+          <select id="quote-who"></select>
+          <button class="btn" type="submit">An die Wand</button>
+        </form>
+        <div class="quotes" id="quotes"></div>
+      </section>
+      <section>
+        <h2>Rankings</h2>
+        <p class="lead">Jeder hat eine Stimme pro Ranking.</p>
+        <details class="new" id="new-rank">
+          <summary>Neues Ranking</summary>
+          <form id="rank-form" class="stack">
+            <label for="rank-q">Frage</label>
+            <input id="rank-q" maxlength="120" required placeholder="Wer kommt am häufigsten zu spät?">
+            <button class="btn" type="submit">Ranking starten</button>
+          </form>
+        </details>
+        <div class="panel" id="ranks"></div>
+      </section>
+    </div>
+
+    <div id="view-admin" class="view" hidden>
+      <section>
+        <h2>Anfragen</h2>
+        <p class="lead">Ordne jede Anfrage dem passenden Mitglied zu.</p>
+        <div class="panel" id="requests"></div>
+      </section>
+      <section>
+        <h2>Mitglied hinzufügen</h2>
+        <form class="inline" id="add-member-form">
+          <input id="add-member-name" maxlength="40" required placeholder="Name" aria-label="Name des neuen Mitglieds">
+          <button class="btn" type="submit">Hinzufügen</button>
+        </form>
+      </section>
+      <section>
+        <h2>Logins</h2>
+        <div class="panel" id="logins"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<nav id="tabs" role="tablist" aria-label="Bereiche" hidden>
+  <button role="tab" data-tab="gruppe" aria-selected="true">Die Gruppe</button>
+  <button role="tab" data-tab="termine" aria-selected="false">Termine</button>
+  <button role="tab" data-tab="wall" aria-selected="false">Wall of Fame</button>
+  <button role="tab" data-tab="admin" aria-selected="false" id="tab-admin" hidden>Admin<span class="badge" id="req-badge" hidden></span></button>
+</nav>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
+<script src="app.js?v=1"></script>
 </body>
 </html>
