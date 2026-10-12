@@ -38,6 +38,10 @@ $$;
 revoke all on function public.save_push(text,text,text), public.remove_push(text) from public, anon;
 grant execute on function public.save_push(text,text,text), public.remove_push(text) to authenticated;
 
+grant usage on schema public to service_role;
+grant select on public.events, public.polls, public.join_requests, public.members, public.rsvps to service_role;
+grant select, delete on public.push_subscriptions to service_role;
+
 -- ============ Ausloeser ============
 
 create schema if not exists private;
@@ -55,7 +59,8 @@ begin
     url := (select value from private.settings where key = 'push_url'),
     body := jsonb_build_object('type', kind, 'id', rid),
     headers := jsonb_build_object('Content-Type', 'application/json',
-                                  'x-push-secret', (select value from private.settings where key = 'push_secret'))
+                                  'x-push-secret', (select value from private.settings where key = 'push_secret')),
+    timeout_milliseconds := 15000
   );
 end $$;
 
