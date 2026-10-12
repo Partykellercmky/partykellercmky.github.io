@@ -71,7 +71,7 @@ $("#login-form").addEventListener("submit", async e => {
 });
 function showLoginError(t) { const el = $("#login-error"); el.textContent = t; el.hidden = false; }
 
-async function logout() { await db.auth.signOut(); me = null; S = {}; setMode("login"); show("login"); }
+async function logout() { try { presence?.untrack(); } catch {} await db.auth.signOut(); me = null; S = {}; setMode("login"); show("login"); }
 
 /* ---------- Start ---------- */
 async function boot() {
@@ -107,12 +107,14 @@ async function load(myId = me?.id) {
   const q = (t, sel = "*") => db.from(t).select(sel);
   const res = await Promise.all([
     q("members", "id,name,bio,is_admin,user_id"), q("events"), q("rsvps"), q("polls"), q("poll_options"), q("poll_votes"),
-    q("quotes"), q("rankings"), q("ranking_votes"),
+    q("quotes"), q("rankings"), q("ranking_votes"), q("reactions"), q("chat_reads"),
     db.from("messages").select("*").order("created_at", { ascending: false }).limit(300)
   ]);
+  // reactions / chat_reads gibt es erst nach chat2.sql – bis dahin einfach leer lassen
+  [9, 10].forEach(i => { if (res[i].error) res[i] = { data: [], error: null }; });
   const err = res.find(r => r.error); if (err) throw err.error;
-  const [members, events, rsvps, polls, options, pvotes, quotes, rankings, rvotes, msgs] = res.map(r => r.data);
-  S = { members: members.sort((a, b) => (b.is_admin - a.is_admin) || a.id - b.id), events, rsvps, polls, options, pvotes, quotes, rankings, rvotes, messages: msgs.reverse(), requests: [] };
+  const [members, events, rsvps, polls, options, pvotes, quotes, rankings, rvotes, reactions, reads, msgs] = res.map(r => r.data);
+  S = { members: members.sort((a, b) => (b.is_admin - a.is_admin) || a.id - b.id), events, rsvps, polls, options, pvotes, quotes, rankings, rvotes, reactions, reads, messages: msgs.reverse(), requests: [] };
   if (members.find(m => m.id === myId)?.is_admin) {
     const { data } = await db.from("join_requests").select("*").order("created_at");
     S.requests = data || [];
@@ -138,10 +140,11 @@ function render() { renderPush(); renderChat(); renderMembers(); renderEvents();
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;
   $("#members-lead").textContent = `${S.members.length} Leute, ein Keller. ${joined} davon sind schon hier eingeloggt.`;
-  $("#members").innerHTML = S.members.map(m => `<div class="member${m.user_id ? "" : " away"}${m.id === me.id ? " mine" : ""}">
+  $("#members").innerHTML = S.members.map(m => `<div class="member${m.user_id ? "" : " away"}${m.id === me.id ? " mine" : ""}" data-id="${m.id}">
     <div class="av">${esc(m.name[0])}</div>
     <div class="txt"><strong>${esc(m.name)}</strong><span class="${m.bio ? "bio" : ""}">${esc(m.bio || (m.user_id ? "Steckbrief folgt" : "noch nicht dabei"))}</span></div></div>`).join("");
   if (document.activeElement !== $("#bio-input")) $("#bio-input").value = me.bio || "";
+  if (presence) renderStatus();
 }
 
 function renderEvents() {
@@ -304,43 +307,313 @@ async function togglePush() {
 
 
 /* ---------- Chat ---------- */
-const chatVisible = () => !$("#view-chat").hidden && !$("#screen-app").hidden;
+const REACTS = { up: "👍", love: "❤️", lol: "😂", wow: "😮", sad: "😢", cheers: "🍻" };
+const chatVisible = () => !$("#view-chat").hidden && !$("#screen-app").hidden && document.visibilityState === "visible";
 const nearBottom = () => window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
 const toBottom = () => requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight }));
 const fmtTime = iso => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const listNames = ids => {
+  const n = ids.map(nameOf);
+  return n.length <= 1 ? (n[0] || "") : n.slice(0, -1).join(", ") + " und " + n[n.length - 1];
+};
 function dayLabel(iso) {
   const d = new Date(iso), t = new Date(), y = new Date(); y.setDate(t.getDate() - 1);
   if (d.toDateString() === t.toDateString()) return "Heute";
   if (d.toDateString() === y.toDateString()) return "Gestern";
   return fmtDate(iso);
 }
-let openMsg = null;
+
+/* Erwaehnungen: @Name oder @alle */
+function mentionRe() {
+  const names = [...S.members.map(m => m.name), "alle"].sort((a, b) => b.length - a.length).map(escRe);
+  return new RegExp(`(^|\\s)@(${names.join("|")})(?![\\p{L}\\p{N}])`, "giu");
+}
+function findMentions(text) {
+  const ids = new Set(); let all = false;
+  for (const m of text.matchAll(mentionRe())) {
+    const n = m[2].toLowerCase();
+    if (n === "alle") { all = true; continue; }
+    const mem = S.members.find(x => x.name.toLowerCase() === n);
+    if (mem && mem.id !== me.id) ids.add(mem.id);
+  }
+  return { mentions: [...ids], mention_all: all };
+}
+function fmtText(text, re) {
+  return esc(text).replace(re, (all, pre, name) => `${pre}<span class="mention">@${name}</span>`);
+}
+
+/* Wer zaehlt fuer die Haken: alle eingeloggten Mitglieder ausser dem Absender */
+const readsOf = id => S.reads?.find(r => r.member_id === id) || { delivered_id: 0, read_id: 0 };
+const othersFor = author => S.members.filter(m => m.user_id && m.id !== author).map(m => m.id);
+function readState(m) {
+  const others = othersFor(m.member_id);
+  const read = others.filter(id => readsOf(id).read_id >= m.id);
+  const got = others.filter(id => Math.max(readsOf(id).delivered_id, readsOf(id).read_id) >= m.id);
+  return { others, read, got };
+}
+function ticks(m) {
+  const { others, read, got } = readState(m);
+  const one = `<path d="M2 8.5l3.2 3.2L12 5"/>`, two = `<path d="M1 8.5l3.2 3.2L11 5"/><path d="M6.5 11.2l.5.5L14 5"/>`;
+  if (!others.length || got.length < others.length) return `<svg class="ticks" viewBox="0 0 15 15" aria-label="gesendet">${one}</svg>`;
+  const all = read.length === others.length;
+  return `<svg class="ticks${all ? " read" : ""}" viewBox="0 0 15 15" aria-label="${all ? "von allen gelesen" : "zugestellt"}">${two}</svg>`;
+}
+
+let replyTo = null, editing = null, sheetMsg = null;
 function renderChat() {
-  if (!S.messages) return;
+  if (!S.messages || !me) return;
   const stick = chatVisible() && nearBottom();
+  const re = mentionRe();
   let lastDay = "", lastWho = null, html = "";
   for (const m of S.messages) {
     const day = new Date(m.created_at).toDateString();
     if (day !== lastDay) { html += `<div class="chat-day">${dayLabel(m.created_at)}</div>`; lastDay = day; lastWho = null; }
-    const mine = m.member_id === me.id, can = mine || me.is_admin;
-    html += `<div class="msg${mine ? " mine" : ""}">${!mine && lastWho !== m.member_id ? `<span class="who">${esc(nameOf(m.member_id))}</span>` : ""}
-      <button type="button" class="bubble${can ? " can" : ""}" ${can ? `data-msg="${m.id}"` : "tabindex=\"-1\""}>${esc(m.text)}<time>${fmtTime(m.created_at)}</time></button>
-      ${openMsg === m.id ? `<button class="link danger" data-del="msg" data-id="${m.id}">Löschen</button>` : ""}</div>`;
+    const mine = m.member_id === me.id;
+    const atMe = !mine && (m.mention_all || (m.mentions || []).includes(me.id));
+    let quote = "";
+    if (m.reply_to) {
+      const o = S.messages.find(x => x.id === m.reply_to);
+      quote = o
+        ? `<span class="quote" data-jump="${o.id}"><b>${esc(o.member_id === me.id ? "Du" : nameOf(o.member_id))}</b><span>${esc(o.text.slice(0, 120))}</span></span>`
+        : `<span class="quote gone"><span>Nachricht nicht mehr verfügbar</span></span>`;
+    }
+    const rs = (S.reactions || []).filter(r => r.message_id === m.id);
+    const counts = {};
+    rs.forEach(r => counts[r.kind] = (counts[r.kind] || 0) + 1);
+    const chips = Object.keys(REACTS).filter(k => counts[k]).map(k => `<span>${REACTS[k]}${counts[k] > 1 ? `<small>${counts[k]}</small>` : ""}</span>`).join("");
+    const myR = rs.some(r => r.member_id === me.id);
+    html += `<div class="msg${mine ? " mine" : ""}" id="m-${m.id}">${!mine && lastWho !== m.member_id ? `<span class="who">${esc(nameOf(m.member_id))}</span>` : ""}
+      <div class="bubble${atMe ? " at-me" : ""}" data-msg="${m.id}" role="button" tabindex="0">${quote}<span class="txt">${fmtText(m.text, re)}</span><span class="meta">${m.edited_at ? "bearbeitet · " : ""}${fmtTime(m.created_at)}${mine ? ticks(m) : ""}</span></div>
+      ${chips ? `<button type="button" class="reacts${myR ? " me" : ""}" data-msg="${m.id}" aria-label="Reaktionen ansehen">${chips}</button>` : ""}</div>`;
     lastWho = m.member_id;
   }
+  const last = S.messages[S.messages.length - 1];
+  if (last) {
+    const { others, read } = readState(last);
+    if (others.length && read.length) {
+      const names = read.slice(0, 4).map(id => id === me.id ? "dir" : nameOf(id));
+      const more = read.length - names.length;
+      html += `<div class="seen-by">${read.length === others.length ? "Von allen gelesen" : "Gelesen von " + names.join(", ") + (more > 0 ? ` und ${more} weiteren` : "")}</div>`;
+    }
+  }
   $("#chat-list").innerHTML = html || `<div class="empty">Noch ist es still im Keller. Schreib die erste Nachricht.</div>`;
-  if (chatVisible()) { markChatSeen(); if (stick || !renderChat.done) toBottom(); renderChat.done = true; }
+  if (chatVisible()) { if (stick || !renderChat.done) toBottom(); renderChat.done = true; }
+  markChat();
   updateChatBadge();
+  if (sheetMsg) renderSheet();
 }
 function lastMsgId() { return S.messages?.length ? S.messages[S.messages.length - 1].id : 0; }
-function markChatSeen() { store.set("pk-chat-seen", String(lastMsgId())); }
+function seenId() { return Math.max(+(store.get("pk-chat-seen") || 0), readsOf(me?.id).read_id); }
 function updateChatBadge() {
-  const seen = +(store.get("pk-chat-seen") || 0);
+  const seen = seenId();
   const n = (S.messages || []).filter(m => m.id > seen && m.member_id !== me?.id).length;
   const b = $("#chat-badge"); b.hidden = !n || chatVisible(); b.textContent = n > 99 ? "99+" : n;
 }
+
+/* Zugestellt / gelesen an den Server melden */
+const sentMark = { d: 0, r: 0 };
+let markTimer = null;
+function markChat() {
+  if (!me || !S.messages) return;
+  const top = lastMsgId(), d = top, r = chatVisible() ? top : 0;
+  if (r) store.set("pk-chat-seen", String(r));
+  if (d <= sentMark.d && r <= sentMark.r) return;
+  clearTimeout(markTimer);
+  markTimer = setTimeout(async () => {
+    const nd = Math.max(d, sentMark.d), nr = Math.max(r, sentMark.r);
+    const { error } = await db.rpc("mark_chat", { p_delivered: nd, p_read: nr });
+    if (!error) { sentMark.d = nd; sentMark.r = nr; }
+  }, 400);
+}
+
+/* Nachricht antippen: Reaktionen und Aktionen */
+function openSheet(id) { sheetMsg = id; renderSheet(); $("#msg-sheet").hidden = false; }
+function closeSheet() { sheetMsg = null; $("#msg-sheet").hidden = true; }
+function renderSheet() {
+  const m = S.messages.find(x => x.id === sheetMsg);
+  if (!m) return closeSheet();
+  const mine = m.member_id === me.id, rs = S.reactions.filter(r => r.message_id === m.id);
+  const myKind = rs.find(r => r.member_id === me.id)?.kind;
+  const who = Object.keys(REACTS).map(k => {
+    const ids = rs.filter(r => r.kind === k).map(r => r.member_id);
+    return ids.length ? `<div>${REACTS[k]} ${esc(ids.map(id => id === me.id ? "Du" : nameOf(id)).join(", "))}</div>` : "";
+  }).join("");
+  let info = "";
+  if (mine) {
+    const { others, read, got } = readState(m);
+    const delivered = got.filter(id => !read.includes(id)), open = others.filter(id => !got.includes(id));
+    info = `<div class="sheet-info">
+      <div><svg class="ticks read" viewBox="0 0 15 15"><path d="M1 8.5l3.2 3.2L11 5"/><path d="M6.5 11.2l.5.5L14 5"/></svg> <b>Gelesen:</b> ${read.length ? esc(listNames(read)) : "noch niemand"}</div>
+      <div><svg class="ticks" viewBox="0 0 15 15"><path d="M1 8.5l3.2 3.2L11 5"/><path d="M6.5 11.2l.5.5L14 5"/></svg> <b>Zugestellt:</b> ${delivered.length ? esc(listNames(delivered)) : "–"}</div>
+      ${open.length ? `<div><svg class="ticks" viewBox="0 0 15 15"><path d="M2 8.5l3.2 3.2L12 5"/></svg> <b>Noch nicht angekommen:</b> ${esc(listNames(open))}</div>` : ""}
+    </div>`;
+  }
+  const can = mine || me.is_admin;
+  $("#msg-sheet .sheet-card").innerHTML = `
+    <div class="sheet-preview"><b>${esc(mine ? "Du" : nameOf(m.member_id))}</b> ${esc(m.text.slice(0, 160))}</div>
+    <div class="react-row">${Object.entries(REACTS).map(([k, e]) => `<button type="button" class="${myKind === k ? "on" : ""}" data-react="${k}" aria-label="Reaktion ${k}">${e}</button>`).join("")}</div>
+    ${who ? `<div class="sheet-who">${who}</div>` : ""}
+    ${info}
+    <div class="sheet-acts">
+      <button type="button" data-act="reply">Antworten</button>
+      <button type="button" data-act="copy">Kopieren</button>
+      ${mine ? `<button type="button" data-act="edit">Bearbeiten</button>` : ""}
+      ${can ? `<button type="button" class="danger" data-act="del">Löschen</button>` : ""}
+      <button type="button" class="muted" data-act="close">Schließen</button>
+    </div>`;
+}
+async function react(kind) {
+  const id = sheetMsg, cur = S.reactions.find(r => r.message_id === id && r.member_id === me.id);
+  S.reactions = S.reactions.filter(r => !(r.message_id === id && r.member_id === me.id));
+  let q;
+  if (cur?.kind === kind) q = db.from("reactions").delete().match({ message_id: id, member_id: me.id });
+  else { S.reactions.push({ message_id: id, member_id: me.id, kind }); q = db.from("reactions").upsert({ message_id: id, member_id: me.id, kind }); }
+  closeSheet(); renderChat();
+  const { error } = await q; if (error) { fail(error); refresh(); }
+}
+function setCompose(mode, m) {
+  replyTo = mode === "reply" ? m.id : null;
+  editing = mode === "edit" ? m.id : null;
+  const bar = $("#compose-bar"), input = $("#chat-input");
+  bar.hidden = !mode;
+  bar.classList.toggle("edit", mode === "edit");
+  if (mode === "reply") { $("#cb-title").textContent = "Antwort an " + (m.member_id === me.id ? "dich selbst" : nameOf(m.member_id)); $("#cb-text").textContent = m.text.slice(0, 120); }
+  if (mode === "edit") { $("#cb-title").textContent = "Nachricht bearbeiten"; $("#cb-text").textContent = m.text.slice(0, 120); input.value = m.text; }
+  $("#chat-send").textContent = mode === "edit" ? "Speichern" : "Senden";
+  if (mode) input.focus();
+}
+function cancelCompose() { const wasEdit = editing !== null; setCompose(null); if (wasEdit) $("#chat-input").value = ""; }
+let pendingDel = false;
+document.getElementById("msg-sheet").addEventListener("click", async e => {
+  if (e.target.id === "msg-sheet") return closeSheet();
+  const b = e.target.closest("button"); if (!b) return;
+  const m = S.messages.find(x => x.id === sheetMsg); if (!m) return closeSheet();
+  if (b.dataset.react) return react(b.dataset.react);
+  const a = b.dataset.act;
+  if (a === "close") return closeSheet();
+  if (a === "reply") { closeSheet(); return setCompose("reply", m); }
+  if (a === "edit") { closeSheet(); return setCompose("edit", m); }
+  if (a === "copy") { try { await navigator.clipboard.writeText(m.text); toast("Kopiert"); } catch { toast("Kopieren ging nicht", true); } return closeSheet(); }
+  if (a === "del") {
+    if (!pendingDel) { pendingDel = true; b.textContent = "Wirklich löschen?"; setTimeout(() => { pendingDel = false; if (b.isConnected) b.textContent = "Löschen"; }, 4000); return; }
+    pendingDel = false; closeSheet();
+    const { error } = await db.from("messages").delete().eq("id", m.id);
+    if (error) return fail(error);
+    S.messages = S.messages.filter(x => x.id !== m.id); renderChat(); toast("Gelöscht");
+  }
+});
+
+/* Klicks im Chatverlauf: Nachricht oeffnen, zum Zitat springen */
+$("#chat-list").addEventListener("click", e => {
+  if (swipe.moved) return;
+  const j = e.target.closest("[data-jump]");
+  if (j) {
+    const el = document.getElementById("m-" + j.dataset.jump);
+    if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+    return;
+  }
+  const b = e.target.closest("[data-msg]"); if (b) openSheet(+b.dataset.msg);
+});
+$("#chat-list").addEventListener("keydown", e => {
+  const b = e.target.closest(".bubble[data-msg]");
+  if (b && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openSheet(+b.dataset.msg); }
+});
+
+/* Nach rechts wischen = antworten (wie bei WhatsApp) */
+const swipe = { el: null, x: 0, y: 0, dx: 0, moved: false };
+$("#chat-list").addEventListener("touchstart", e => {
+  const b = e.target.closest(".bubble"); swipe.moved = false;
+  if (!b) return; swipe.el = b; swipe.x = e.touches[0].clientX; swipe.y = e.touches[0].clientY; swipe.dx = 0;
+}, { passive: true });
+$("#chat-list").addEventListener("touchmove", e => {
+  if (!swipe.el) return;
+  const dx = e.touches[0].clientX - swipe.x, dy = e.touches[0].clientY - swipe.y;
+  if (Math.abs(dy) > 30 && Math.abs(dy) > Math.abs(dx)) { swipe.el.style.transform = ""; swipe.el = null; return; }
+  if (dx > 8) { swipe.moved = true; swipe.dx = dx; swipe.el.style.transform = `translateX(${Math.min(dx, 80)}px)`; swipe.el.classList.toggle("swipe-ok", dx > 60); }
+}, { passive: true });
+$("#chat-list").addEventListener("touchend", () => {
+  if (!swipe.el) return;
+  const el = swipe.el; el.style.transform = ""; el.classList.remove("swipe-ok"); swipe.el = null;
+  if (swipe.dx > 60) { const m = S.messages.find(x => x.id === +el.dataset.msg); if (m) setCompose("reply", m); }
+  setTimeout(() => swipe.moved = false, 50);
+});
+
+/* Online und "schreibt gerade" */
+let presence = null, amTyping = false, typingTimer = null;
+function startPresence() {
+  if (presence || !me) return;
+  presence = db.channel("partykeller-online", { config: { presence: { key: String(me.id) } } });
+  presence.on("presence", { event: "sync" }, renderStatus)
+    .subscribe(st => { if (st === "SUBSCRIBED") trackMe(); });
+}
+function trackMe() {
+  if (!presence) return;
+  if (document.visibilityState !== "visible") { presence.untrack(); return; }
+  presence.track({ typing: amTyping && !$("#view-chat").hidden });
+}
+function setTyping(on) {
+  clearTimeout(typingTimer);
+  if (on) typingTimer = setTimeout(() => setTyping(false), 4000);
+  if (on === amTyping) return;
+  amTyping = on; trackMe();
+}
+function onlineList() {
+  const st = presence?.presenceState() || {};
+  return Object.entries(st).map(([k, v]) => ({ id: +k, typing: v.some(x => x.typing) })).filter(o => o.id !== me?.id && S.members?.some(m => m.id === o.id));
+}
+function renderStatus() {
+  const on = onlineList(), el = $("#chat-status");
+  const typing = on.filter(o => o.typing).map(o => o.id);
+  if (typing.length) { el.innerHTML = `<span class="typing"><i></i><i></i><i></i></span> ${esc(listNames(typing))} ${typing.length > 1 ? "schreiben" : "schreibt"} …`; el.className = "chat-status is-typing"; }
+  else if (on.length) { el.innerHTML = `<span class="dot"></span> Online: ${esc(listNames(on.map(o => o.id)))}`; el.className = "chat-status"; }
+  else { el.textContent = "Gerade ist sonst niemand online"; el.className = "chat-status quiet"; }
+  const ids = new Set(on.map(o => o.id));
+  $$("#members .member").forEach(div => div.classList.toggle("online", ids.has(+div.dataset.id)));
+}
+
+/* @-Vorschlaege beim Tippen */
+function mentionQuery() {
+  const input = $("#chat-input"), upto = input.value.slice(0, input.selectionStart ?? input.value.length);
+  const m = upto.match(/(^|\s)@([^\s@]{0,20})$/);
+  return m ? { q: m[2], start: upto.length - m[2].length - 1 } : null;
+}
+function renderMentionList() {
+  const box = $("#mention-list"), mq = mentionQuery();
+  if (!mq) { box.hidden = true; return; }
+  const q = mq.q.toLowerCase();
+  const opts = [{ id: 0, name: "alle" }, ...S.members.filter(m => m.id !== me.id && m.user_id)]
+    .filter(m => m.name.toLowerCase().startsWith(q)).slice(0, 8);
+  if (!opts.length) { box.hidden = true; return; }
+  box.innerHTML = opts.map(m => `<button type="button" data-mention="${esc(m.name)}">@${esc(m.name)}</button>`).join("");
+  box.hidden = false;
+}
+$("#mention-list").addEventListener("mousedown", e => e.preventDefault());
+$("#mention-list").addEventListener("click", e => {
+  const b = e.target.closest("[data-mention]"); const mq = mentionQuery(); if (!b || !mq) return;
+  const input = $("#chat-input"), pos = input.selectionStart ?? input.value.length;
+  const ins = "@" + b.dataset.mention + " ";
+  input.value = input.value.slice(0, mq.start) + ins + input.value.slice(pos);
+  const c = mq.start + ins.length; input.setSelectionRange(c, c); input.focus();
+  $("#mention-list").hidden = true;
+});
+$("#chat-input").addEventListener("input", e => { renderMentionList(); setTyping(!!e.target.value.trim()); });
+$("#chat-input").addEventListener("keydown", e => { if (e.key === "Escape") { $("#mention-list").hidden = true; if (replyTo || editing) cancelCompose(); } });
+$("#chat-input").addEventListener("blur", () => setTimeout(() => { $("#mention-list").hidden = true; }, 150));
+$("#compose-bar").addEventListener("click", e => { if (e.target.closest("[data-act=cb-cancel]")) cancelCompose(); });
+
+/* Platz unter dem Verlauf an die Hoehe des Eingabebereichs anpassen */
+if ("ResizeObserver" in window) new ResizeObserver(([e]) => {
+  const stick = chatVisible() && nearBottom();
+  $("#chat-list").style.paddingBottom = Math.round(e.target.offsetHeight + 24) + "px";
+  if (stick) toBottom();
+}).observe($("#chat-form"));
+
+/* Live-Verbindung */
 let chatChannel = null;
+const upsertBy = (arr, row, same) => { const i = arr.findIndex(x => same(x, row)); if (i >= 0) arr[i] = row; else arr.push(row); };
 async function startRealtime() {
+  startPresence();
   if (chatChannel) return;
   const { data: { session } } = await db.auth.getSession();
   if (session) { try { await db.realtime.setAuth(session.access_token); } catch {} }
@@ -349,20 +622,48 @@ async function startRealtime() {
       if (!S.messages || S.messages.some(x => x.id === m.id)) return;
       S.messages.push(m); renderChat();
     })
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, ({ new: m }) => {
+      if (!S.messages) return; const i = S.messages.findIndex(x => x.id === m.id); if (i >= 0) { S.messages[i] = m; renderChat(); }
+    })
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, ({ old }) => {
       if (!S.messages) return;
       S.messages = S.messages.filter(x => x.id !== old.id); renderChat();
     })
+    .on("postgres_changes", { event: "*", schema: "public", table: "reactions" }, ({ eventType, new: n, old }) => {
+      if (!S.reactions) return;
+      const same = (a, b) => a.message_id === b.message_id && a.member_id === b.member_id;
+      if (eventType === "DELETE") S.reactions = S.reactions.filter(r => !same(r, old));
+      else upsertBy(S.reactions, n, same);
+      renderChat();
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "chat_reads" }, ({ eventType, new: n }) => {
+      if (!S.reads || eventType === "DELETE") return;
+      upsertBy(S.reads, n, (a, b) => a.member_id === b.member_id); renderChat();
+    })
     .subscribe();
 }
+
+/* Senden / Speichern */
 $("#chat-form").addEventListener("submit", async e => {
   e.preventDefault();
   const input = $("#chat-input"), text = input.value.trim(); if (!text) return;
   const btn = $("#chat-send"); btn.disabled = true;
-  const { data, error } = await db.from("messages").insert({ member_id: me.id, text }).select().single();
+  $("#mention-list").hidden = true;
+  if (editing !== null) {
+    const id = editing;
+    const { data, error } = await db.from("messages").update({ text }).eq("id", id).select().single();
+    btn.disabled = false;
+    if (error) return fail(error);
+    const i = S.messages.findIndex(x => x.id === id); if (i >= 0) S.messages[i] = data;
+    input.value = ""; setCompose(null); renderChat(); toast("Geändert");
+    return;
+  }
+  const row = { member_id: me.id, text, reply_to: replyTo, ...findMentions(text) };
+  let { data, error } = await db.from("messages").insert(row).select().single();
+  if (error && /column/i.test(error.message || "")) ({ data, error } = await db.from("messages").insert({ member_id: me.id, text }).select().single());
   btn.disabled = false;
   if (error) return fail(error);
-  input.value = ""; input.focus();
+  input.value = ""; input.focus(); setTyping(false); setCompose(null);
   if (!S.messages.some(x => x.id === data.id)) S.messages.push(data);
   renderChat(); toBottom();
 });
@@ -370,22 +671,21 @@ $("#chat-push").addEventListener("change", async e => {
   const sub = await currentSub(); if (!sub) return;
   const { error } = await db.rpc("set_push_chat", { p_endpoint: sub.endpoint, p_on: e.target.checked });
   if (error) { e.target.checked = !e.target.checked; return fail(error); }
-  toast(e.target.checked ? "Chat-Benachrichtigungen an" : "Chat stummgeschaltet");
+  toast(e.target.checked ? "Chat-Benachrichtigungen an" : "Chat stummgeschaltet (Erwähnungen und Antworten kommen trotzdem)");
 });
 
 /* ---------- Aktionen ---------- */
 const pendingDelete = new Set();
 document.addEventListener("click", async e => {
-  const t = e.target.closest("button, [data-tab]"); if (!t) return;
+  const t = e.target.closest("button, [data-tab]"); if (!t || t.closest("#chat-list, #msg-sheet, #chat-form")) return;
   if (t.dataset.tab) {
     $$("[data-tab]").forEach(b => b.setAttribute("aria-selected", b === t));
     $$(".view").forEach(v => v.hidden = v.id !== "view-" + t.dataset.tab);
     store.set("pk-tab", t.dataset.tab);
-    if (t.dataset.tab === "chat") { renderChat.done = false; if (S.messages) renderChat(); } else window.scrollTo({ top: 0 });
+    if (t.dataset.tab === "chat") { renderChat.done = false; if (S.messages) renderChat(); renderStatus(); } else { window.scrollTo({ top: 0 }); closeSheet(); setTyping(false); }
     updateChatBadge();
     return;
   }
-  if (t.dataset.msg) { openMsg = openMsg === +t.dataset.msg ? null : +t.dataset.msg; return renderChat(); }
   const a = t.dataset.action;
   if (a === "logout") return logout();
   if (a === "push-toggle") return togglePush();
@@ -474,7 +774,10 @@ $("#add-member-form").addEventListener("submit", async e => {
 });
 
 /* Beim Zurueckkehren in die App neu laden, damit alle das Gleiche sehen */
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
+document.addEventListener("visibilitychange", () => {
+  trackMe();
+  if (document.visibilityState === "visible") { refresh(); if (S.messages) renderChat(); }
+});
 setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 60000);
 
 /* Letzten Bereich merken */

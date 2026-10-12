@@ -1,5 +1,7 @@
 // Partykeller: kleiner Service Worker. Holt die Seite immer frisch, faellt offline auf den letzten Stand zurueck.
-const CACHE = 'partykeller-v2';
+const CACHE = 'partykeller-v3';
+const SUPABASE_URL = 'https://txucqslsykzfhwugdolt.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_60QG69Q7CZ6Ai0qrGePH6w_sMXGaSdT';
 self.addEventListener('install', e => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())
@@ -20,9 +22,10 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let msg = { title: 'Partykeller', body: 'Es gibt was Neues.', url: './', tag: 'partykeller' };
   try { msg = Object.assign(msg, e.data.json()); } catch {}
-  e.waitUntil(self.registration.showNotification(msg.title, {
+  const shown = self.registration.showNotification(msg.title, {
     body: msg.body, tag: msg.tag, icon: 'icon-192.png', badge: 'icon-192.png', data: { url: msg.url }
-  }));
+  });
+  e.waitUntil(Promise.all([shown, msg.mid ? confirmDelivery(msg.mid) : null]));
 });
 // Beim Antippen die App oeffnen
 self.addEventListener('notificationclick', e => {
@@ -33,3 +36,16 @@ self.addEventListener('notificationclick', e => {
     return clients.openWindow(target);
   }));
 });
+
+// Chat-Haken: dem Server melden, dass die Nachricht auf diesem Handy angekommen ist
+async function confirmDelivery(mid) {
+  try {
+    const sub = await self.registration.pushManager.getSubscription();
+    if (!sub) return;
+    await fetch(SUPABASE_URL + '/rest/v1/rpc/push_received', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+      body: JSON.stringify({ p_endpoint: sub.endpoint, p_msg: mid })
+    });
+  } catch {}
+}

@@ -27,7 +27,7 @@ const berlinDate = (offsetDays: number) => {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 };
 
-type Msg = { title: string; body: string; url: string; tag: string };
+type Msg = { title: string; body: string; url: string; tag: string; mid?: number };
 type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; auth: string; chat?: boolean };
 
 async function subsFor(filter: (s: Sub) => boolean): Promise<Sub[]> {
@@ -80,13 +80,38 @@ Deno.serve(async (req) => {
       return Response.json(await send(subs, { title: "Neue Beitrittsanfrage", body: (r?.name || "Jemand") + " möchte in den Partykeller.", url: "./#admin", tag: "request-" + id }));
     }
     if (type === "chat") {
-      const { data: m, error } = await db.from("messages").select("text,member_id").eq("id", id).maybeSingle();
+      const { data: m, error } = await db.from("messages").select("text,member_id,reply_to,mentions,mention_all").eq("id", id).maybeSingle();
       if (error) throw error;
       if (!m) return Response.json({ skipped: true, grund: "Nachricht " + id + " nicht gefunden" });
       const { data: who } = await db.from("members").select("name").eq("id", m.member_id).maybeSingle();
+      const name = who?.name || "Jemand";
+      let replyTo: number | null = null;
+      if (m.reply_to) {
+        const { data: o } = await db.from("messages").select("member_id").eq("id", m.reply_to).maybeSingle();
+        if (o && o.member_id !== m.member_id) replyTo = o.member_id;
+      }
+      const mentioned = new Set<number>(m.mentions || []);
       const text = m.text.length > 140 ? m.text.slice(0, 137) + "…" : m.text;
-      const subs = await subsFor((s) => s.member_id !== m.member_id && s.chat !== false);
-      return Response.json(await send(subs, { title: (who?.name || "Jemand") + " im Partykeller-Chat", body: text, url: "./#chat", tag: "chat-" + id }));
+      const subs = await subsFor((s) => s.member_id !== m.member_id);
+      // Erwaehnte und Angeschriebene bekommen die Nachricht auch bei stummgeschaltetem Chat
+      const groups: Record<string, Sub[]> = { mention: [], reply: [], all: [], normal: [] };
+      for (const s of subs) {
+        if (mentioned.has(s.member_id)) groups.mention.push(s);
+        else if (s.member_id === replyTo) groups.reply.push(s);
+        else if (m.mention_all) groups.all.push(s);
+        else if (s.chat !== false) groups.normal.push(s);
+      }
+      const titles: Record<string, string> = {
+        mention: name + " hat dich erwähnt", reply: name + " hat dir geantwortet",
+        all: name + " an alle im Partykeller", normal: name + " im Partykeller-Chat",
+      };
+      let sent = 0, removed = 0;
+      for (const k of Object.keys(groups)) {
+        if (!groups[k].length) continue;
+        const r = await send(groups[k], { title: titles[k], body: text, url: "./#chat", tag: "chat-" + id, mid: id });
+        sent += r.sent; removed += r.removed;
+      }
+      return Response.json({ sent, removed });
     }
     if (type === "reminder") {
       const tomorrow = berlinDate(1);
