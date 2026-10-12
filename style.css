@@ -89,6 +89,10 @@ details.past>summary{color:var(--muted)}
 .member .bio{color:var(--teal)}
 .me{margin-top:24px}
 .install{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;border-color:var(--teal);margin-bottom:24px}
+.push{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:24px}
+.push-txt{flex:1 1 200px;min-width:0}
+.push p{margin:4px 0 0;color:var(--muted);font-size:.9rem}
+.push.on{border-color:var(--teal)}
 .install p{margin:4px 0 0;color:var(--muted);font-size:.9rem}
 
 /* Termine */

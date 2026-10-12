@@ -1,5 +1,6 @@
 // Partykeller Gruppe – App-Logik
 const SUPABASE_URL = "https://txucqslsykzfhwugdolt.supabase.co";
+const VAPID_PUBLIC = "BMv5gXP4GLGiqiD-lKGOmLbBYS1sob6VXg4frEZ7-Y33BWY4mff-NjikqVDk8q8uuO6pVnIFm3-UwoeR7CHz79s";
 const SUPABASE_KEY = "sb_publishable_60QG69Q7CZ6Ai0qrGePH6w_sMXGaSdT";
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
 
@@ -130,7 +131,7 @@ const nameOf = id => S.members.find(m => m.id === id)?.name || "Ehemaliges Mitgl
 const canDelete = createdBy => me && (createdBy === me.id || me.is_admin);
 
 /* ---------- Anzeige ---------- */
-function render() { renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); }
+function render() { renderPush(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); }
 
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;
@@ -237,6 +238,55 @@ function renderInstall() {
       : "Oben rechts auf die drei Punkte tippen, dann „App installieren“ oder „Zum Startbildschirm hinzufügen“. Im Samsung-Browser: Menü unten rechts, „Seite hinzufügen zu“, „Startbildschirm“.";
 }
 
+
+/* ---------- Push-Benachrichtigungen ---------- */
+const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+let pushOn = false;
+async function currentSub() {
+  if (!pushSupported) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+async function renderPush() {
+  const card = $("#push-card"), text = $("#push-text"), btn = $("#push-btn");
+  card.hidden = false; btn.hidden = false; card.classList.remove("on");
+  if (isIOS && !isStandalone()) { text.textContent = "Leg die App zuerst auf den Home-Bildschirm und öffne sie von dort. Dann kannst du Benachrichtigungen einschalten."; btn.hidden = true; return; }
+  if (!pushSupported) { text.textContent = "Dein Browser kann leider keine Benachrichtigungen empfangen."; btn.hidden = true; return; }
+  if (Notification.permission === "denied") { text.textContent = "Benachrichtigungen sind blockiert. Du kannst sie in den Einstellungen deines Handys für diese App wieder erlauben."; btn.hidden = true; return; }
+  pushOn = !!(await currentSub()) && Notification.permission === "granted";
+  card.classList.toggle("on", pushOn);
+  text.textContent = pushOn ? "Sind auf diesem Gerät an: neue Termine, Erinnerungen am Vortag und neue Abstimmungen." : "Bekomm Bescheid bei neuen Terminen, neuen Abstimmungen und am Tag vor einem Treffen.";
+  btn.textContent = pushOn ? "Ausschalten" : "Aktivieren";
+  btn.classList.toggle("ghost", pushOn);
+}
+function b64ToBytes(b64) {
+  const pad = "=".repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+async function togglePush() {
+  const btn = $("#push-btn"); btn.disabled = true;
+  try {
+    if (pushOn) {
+      const sub = await currentSub();
+      if (sub) { await db.rpc("remove_push", { p_endpoint: sub.endpoint }); await sub.unsubscribe(); }
+      toast("Benachrichtigungen aus");
+    } else {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { toast("Ohne Erlaubnis geht es leider nicht.", true); return; }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC) });
+      const j = sub.toJSON();
+      const { error } = await db.rpc("save_push", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+      if (error) throw error;
+      toast("Benachrichtigungen an");
+    }
+  } catch (err) { fail(err); }
+  finally { btn.disabled = false; renderPush(); }
+}
+
 /* ---------- Aktionen ---------- */
 const pendingDelete = new Set();
 document.addEventListener("click", async e => {
@@ -250,6 +300,7 @@ document.addEventListener("click", async e => {
   }
   const a = t.dataset.action;
   if (a === "logout") return logout();
+  if (a === "push-toggle") return togglePush();
   if (a === "recheck") return boot();
   if (a === "hide-install") { store.set("pk-install-hidden", "1"); $("#install-card").hidden = true; return; }
   if (a === "add-opt") {
@@ -339,8 +390,9 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 60000);
 
 /* Letzten Bereich merken */
-const lastTab = store.get("pk-tab");
-if (lastTab && lastTab !== "admin") { const b = document.querySelector(`[data-tab="${lastTab}"]`); if (b) b.click(); }
+const hashTab = location.hash.slice(1);
+const lastTab = ["termine", "wall", "gruppe", "admin"].includes(hashTab) ? hashTab : store.get("pk-tab");
+if (lastTab && (lastTab !== "admin" || hashTab === "admin")) { const b = document.querySelector(`[data-tab="${lastTab}"]`); if (b) b.click(); }
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 db.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") show("login"); });

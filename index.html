@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=1">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <div class="wrap">
@@ -68,6 +68,10 @@
       <section id="install-card" class="card install" hidden>
         <div><b>Als App aufs Handy</b><p id="install-text"></p></div>
         <button class="link" type="button" data-action="hide-install">Ausblenden</button>
+      </section>
+      <section id="push-card" class="card push" hidden>
+        <div class="push-txt"><b>Benachrichtigungen</b><p id="push-text"></p></div>
+        <button class="btn" type="button" id="push-btn" data-action="push-toggle">Aktivieren</button>
       </section>
       <section>
         <h2>Wer drin ist</h2>
@@ -180,6 +184,6 @@
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
