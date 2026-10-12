@@ -5,13 +5,15 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 // Geheimer Server-Schluessel: je nach Projekt unter einem anderen Namen hinterlegt
 function serverKey(): string {
-  const direct = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SECRET_KEY");
-  if (direct) return direct;
+  const custom = Deno.env.get("SERVER_KEY");
+  if (custom) return custom;
   try {
     const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}");
-    const first = Object.values(keys)[0];
-    if (typeof first === "string") return first;
+    const k = keys.default || Object.values(keys)[0];
+    if (typeof k === "string" && k) return k;
   } catch { /* ignorieren */ }
+  const direct = Deno.env.get("SUPABASE_SECRET_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (direct) return direct;
   throw new Error("Kein Server-Schluessel gefunden");
 }
 const db = createClient(Deno.env.get("SUPABASE_URL")!, serverKey(), { auth: { persistSession: false } });
@@ -55,16 +57,18 @@ Deno.serve(async (req) => {
   const { type, id } = await req.json();
   try {
     if (type === "event") {
-      const { data: e } = await db.from("events").select("title,day,info,created_by").eq("id", id).single();
-      if (!e) return Response.json({ skipped: true });
+      const { data: e, error } = await db.from("events").select("title,day,info,created_by").eq("id", id).maybeSingle();
+      if (error) throw error;
+      if (!e) return Response.json({ skipped: true, grund: "Termin " + id + " nicht gefunden" });
       const subs = await subsFor((s) => s.member_id !== e.created_by);
       return Response.json(await send(subs, {
         title: "Neuer Termin: " + e.title, body: fmtDay(e.day) + (e.info ? " · " + e.info : "") + " · Bist du dabei?", url: "./#termine", tag: "event-" + id,
       }));
     }
     if (type === "poll") {
-      const { data: p } = await db.from("polls").select("question,created_by").eq("id", id).single();
-      if (!p) return Response.json({ skipped: true });
+      const { data: p, error } = await db.from("polls").select("question,created_by").eq("id", id).maybeSingle();
+      if (error) throw error;
+      if (!p) return Response.json({ skipped: true, grund: "Abstimmung " + id + " nicht gefunden" });
       const subs = await subsFor((s) => s.member_id !== p.created_by);
       return Response.json(await send(subs, { title: "Neue Abstimmung", body: p.question, url: "./#termine", tag: "poll-" + id }));
     }
@@ -90,6 +94,6 @@ Deno.serve(async (req) => {
     return new Response("Unbekannter Typ", { status: 400 });
   } catch (err) {
     console.error(err);
-    return new Response(String(err), { status: 500 });
+    return Response.json({ fehler: (err as { message?: string })?.message || String(err) }, { status: 500 });
   }
 });
