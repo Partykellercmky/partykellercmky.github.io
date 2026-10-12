@@ -255,7 +255,14 @@ async function renderPush() {
   if (isIOS && !isStandalone()) { text.textContent = "Leg die App zuerst auf den Home-Bildschirm und öffne sie von dort. Dann kannst du Benachrichtigungen einschalten."; btn.hidden = true; return; }
   if (!pushSupported) { text.textContent = "Dein Browser kann leider keine Benachrichtigungen empfangen."; btn.hidden = true; return; }
   if (Notification.permission === "denied") { text.textContent = "Benachrichtigungen sind blockiert. Du kannst sie in den Einstellungen deines Handys für diese App wieder erlauben."; btn.hidden = true; return; }
-  pushOn = !!(await currentSub()) && Notification.permission === "granted";
+  const sub = await currentSub();
+  pushOn = !!sub && Notification.permission === "granted";
+  // Geraet bei jedem Start einmal beim Server auffrischen (falls es dort fehlt)
+  if (pushOn && !renderPush.synced) {
+    renderPush.synced = true;
+    const j = sub.toJSON();
+    db.rpc("save_push", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth }).then(({ error }) => { if (error) console.warn(error); });
+  }
   card.classList.toggle("on", pushOn);
   text.textContent = pushOn ? "Sind auf diesem Gerät an: neue Termine, Erinnerungen am Vortag und neue Abstimmungen." : "Bekomm Bescheid bei neuen Terminen, neuen Abstimmungen und am Tag vor einem Treffen.";
   btn.textContent = pushOn ? "Ausschalten" : "Aktivieren";
