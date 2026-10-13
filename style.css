@@ -343,3 +343,15 @@ nav .prost-tab .badge{background:var(--teal)}
 .rest .rn{min-width:0;overflow-wrap:anywhere}
 .wall-sum{margin:10px 0 0}
 .prost-map .leaflet-tile-pane{filter:invert(1) hue-rotate(185deg) brightness(.8) contrast(.95) saturate(.55)}
+
+/* Unterwegs zu einer Runde */
+.pm-who .comer{display:block;margin-top:2px;color:var(--muted)}
+.pm-who .comer b{color:var(--cream);font-weight:700}
+.arrived{color:#5dfc8d;font-weight:700}
+.onway{margin-top:10px;padding:10px 12px;border:1px solid var(--amber);border-radius:10px;background:rgba(242,180,92,.08)}
+.onway p{margin:0 0 6px;font-size:.88rem}
+.onway .row{gap:8px 14px}
+.onway.done{color:#5dfc8d;font-weight:700;border-color:#5dfc8d;background:rgba(93,252,141,.08)}
+.pin.walker span{width:30px;height:30px;font-size:.78rem;background:var(--amber);border-color:#fff2dc;box-shadow:0 0 12px var(--amber)}
+.pin.walker.old span{opacity:.55;box-shadow:none}
+#come-form h2{margin:0}

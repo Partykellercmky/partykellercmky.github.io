@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <div class="wrap">
@@ -177,6 +177,15 @@
           <button class="link" type="button" data-action="prost-close">Abbrechen</button>
         </form>
       </div>
+      <div id="come-sheet" class="sheet" hidden>
+        <form class="sheet-card" id="come-form" role="dialog" aria-label="Vorbeikommen">
+          <h2 id="come-title">Vorbeikommen</h2>
+          <label class="switch-row" for="come-geo"><input type="checkbox" id="come-geo" checked> Standort teilen, damit man sieht, wo ich gerade bin</label>
+          <p class="hint">Dein Punkt wandert etwa jede Minute mit, solange die App bei dir offen ist. Mit "Bin angekommen" verschwindet er wieder.</p>
+          <button class="btn" type="submit" id="come-go">Ich komme!</button>
+          <button class="link" type="button" data-come-cancel>Abbrechen</button>
+        </form>
+      </div>
     </div>
 
     <div id="view-chat" class="view" hidden>
@@ -274,6 +283,6 @@
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>

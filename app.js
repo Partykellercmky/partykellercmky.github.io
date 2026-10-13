@@ -790,6 +790,21 @@ function renderProst() {
   renderWallDrinks();
   if (prostVisible()) renderProstMap();
 }
+const agoMin = iso => Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+const agoText = iso => { const m = agoMin(iso); return m < 1 ? "gerade eben" : m < 60 ? `vor ${m} Min.` : `vor ${Math.floor(m / 60)} Std.`; };
+function comerLine(j) {
+  const st = j.arrived_at ? `<span class="arrived">ist da</span>`
+    : j.lat != null ? `unterwegs · Standort ${agoText(j.loc_at)}` : "unterwegs";
+  return `<span class="comer"><b>${esc(nameOf(j.member_id))}</b> ${st}</span>`;
+}
+function onMyWayHTML(s, j) {
+  if (j.arrived_at) return `<p class="onway done">Du bist angekommen. Prost!</p>`;
+  return `<div class="onway"><p>${j.lat != null ? `Du bist unterwegs zu ${esc(nameOf(s.member_id))}. Dein Standort wird geteilt (zuletzt ${agoText(j.loc_at)}) und wandert mit, solange die App offen ist.` : `Du bist unterwegs zu ${esc(nameOf(s.member_id))}. Dein Standort wird nicht geteilt.`}</p>
+    <div class="row">
+      <button class="btn" type="button" data-arrive="${s.id}">Bin angekommen</button>
+      ${j.lat != null ? `<button class="link" type="button" data-stoploc="${s.id}">Standort nicht mehr teilen</button>` : `<button class="link" type="button" data-startloc="${s.id}">Standort doch teilen</button>`}
+    </div></div>`;
+}
 function mineHTML(s) {
   const ds = drinksOf(s.id), js = joinsOf(s.id);
   const coming = js.filter(j => j.kind === "coming").map(j => j.member_id), cheers = js.filter(j => j.kind === "cheers").map(j => j.member_id);
@@ -798,7 +813,7 @@ function mineHTML(s) {
     <div class="pm-count"><b>${ds.length}</b><span>${ds.length === 1 ? "Getränk" : "Getränke"}${ds.length ? `<small>${esc(drinkSummary(ds))}</small>` : ""}</span></div>
     <span class="label">Noch eins? Antippen zählt mit.</span>
     <div class="drink-quick">${Object.entries(DRINKS).map(([k, d]) => `<button type="button" class="drink-b" data-drink="${k}" aria-label="${d.l} zählen"><span>${d.e}</span>${d.l}</button>`).join("")}</div>
-    ${coming.length ? `<p class="pm-who"><b>Kommen vorbei:</b> ${esc(listNames(coming))}</p>` : ""}
+    ${coming.length ? `<div class="pm-who"><b>Kommen vorbei:</b>${js.filter(j => j.kind === "coming").map(comerLine).join("")}</div>` : ""}
     ${cheers.length ? `<p class="pm-who"><b>Prost von:</b> ${esc(listNames(cheers))}</p>` : ""}
     <div class="pm-acts">
       <button class="btn ghost" type="button" data-action="prost-extend">+1 Stunde</button>
@@ -807,7 +822,7 @@ function mineHTML(s) {
     ${ds.length ? `<button class="link" type="button" data-action="prost-undo">Letztes Getränk zurücknehmen</button>` : ""}`;
 }
 function liveHTML(s) {
-  const ds = drinksOf(s.id), js = joinsOf(s.id), myJ = js.find(j => j.member_id === me.id)?.kind;
+  const ds = drinksOf(s.id), js = joinsOf(s.id), myJoin = js.find(j => j.member_id === me.id), myJ = myJoin?.kind;
   const coming = js.filter(j => j.kind === "coming").map(j => j.member_id);
   const last = ds[ds.length - 1];
   return `<article class="live">
@@ -820,7 +835,8 @@ function liveHTML(s) {
         <button class="chip${myJ === "coming" ? " on" : ""}" type="button" data-join="${s.id}" data-k="coming">Ich komme!</button>
         <button class="chip${myJ === "cheers" ? " on" : ""}" type="button" data-join="${s.id}" data-k="cheers">Prost!</button>
       </div>
-      ${coming.length ? `<p class="count live-coming">Kommen vorbei: ${esc(coming.map(id => id === me.id ? "du" : nameOf(id)).join(", "))}</p>` : ""}
+      ${myJoin && myJoin.kind === "coming" ? onMyWayHTML(s, myJoin) : ""}
+      ${coming.filter(id => id !== me.id).length ? `<p class="count live-coming">Kommen vorbei: ${esc(listNames(coming.filter(id => id !== me.id)))}</p>` : ""}
     </div></article>`;
 }
 function periodStart(p) {
@@ -873,8 +889,10 @@ function loadLeaflet() {
 }
 async function renderProstMap() {
   const pts = P().sessions.filter(s => isLive(s) && s.lat != null && s.lng != null);
-  const el = $("#prost-map"); el.hidden = !pts.length;
-  if (!pts.length) { pMapKey = ""; return; }
+  const liveIds = new Set(P().sessions.filter(isLive).map(s => s.id));
+  const walkers = P().joins.filter(j => liveIds.has(j.session_id) && j.kind === "coming" && !j.arrived_at && j.lat != null);
+  const el = $("#prost-map"); el.hidden = !pts.length && !walkers.length;
+  if (el.hidden) { pMapKey = ""; return; }
   try { await loadLeaflet(); } catch { el.hidden = true; return; }
   if (!pMap) {
     pMap = L.map(el, { zoomControl: false, scrollWheelZoom: false });
@@ -892,8 +910,17 @@ async function renderProstMap() {
       .bindPopup(`<b>${esc(s.member_id === me.id ? "Du" : nameOf(s.member_id))}</b>${s.place ? "<br>" + esc(s.place) : ""}<br>${plural(n, "Getränk", "Getränke")} seit ${fmtTime(s.started_at)}`)
       .addTo(pLayer);
   });
-  const key = pts.map(s => `${s.id}:${s.lat},${s.lng}`).join("|");
-  if (key !== pMapKey) { pMapKey = key; pMap.fitBounds(L.latLngBounds(pts.map(s => [s.lat, s.lng])), { padding: [40, 40], maxZoom: 15 }); }
+  walkers.forEach(j => {
+    const host = P().sessions.find(s => s.id === j.session_id);
+    const mine = j.member_id === me.id, old = agoMin(j.loc_at) > 20;
+    if (host?.lat != null) L.polyline([[j.lat, j.lng], [host.lat, host.lng]], { color: "#f2b45c", weight: 2, opacity: .7, dashArray: "6 8" }).addTo(pLayer);
+    L.marker([j.lat, j.lng], { icon: L.divIcon({ className: "pin walker" + (old ? " old" : ""), html: `<span>${esc(nameOf(j.member_id)[0])}</span>`, iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -14] }) })
+      .bindPopup(`<b>${esc(mine ? "Du" : nameOf(j.member_id))}</b><br>unterwegs zu ${esc(host?.member_id === me.id ? "dir" : nameOf(host?.member_id))}<br>Standort ${agoText(j.loc_at)}`)
+      .addTo(pLayer);
+  });
+  const all = [...pts.map(s => [s.lat, s.lng]), ...walkers.map(j => [j.lat, j.lng])];
+  const key = [...pts.map(s => "s" + s.id), ...walkers.map(j => "j" + j.id)].sort().join("|");
+  if (key !== pMapKey) { pMapKey = key; pMap.fitBounds(L.latLngBounds(all), { padding: [40, 40], maxZoom: 15 }); }
 }
 
 
@@ -987,9 +1014,57 @@ async function prostAction(a) {
     return run(db.from("prost_drinks").delete().eq("id", last.id), "Zurückgenommen");
   }
 }
+function openComeSheet(sid) {
+  const s = P().sessions.find(x => x.id === sid); if (!s) return;
+  comeSid = sid;
+  $("#come-title").textContent = `Zu ${nameOf(s.member_id)} kommen`;
+  $("#come-geo").checked = store.get("pk-come-geo") !== "0";
+  $("#come-sheet").hidden = false;
+}
+let comeSid = null;
+const getPosSafe = async () => { try { const p = await getPos(); return [+p.coords.latitude.toFixed(4), +p.coords.longitude.toFixed(4)]; } catch { return null; } };
+$("#come-sheet").addEventListener("click", e => { if (e.target.id === "come-sheet" || e.target.closest("[data-come-cancel]")) $("#come-sheet").hidden = true; });
+$("#come-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const geo = $("#come-geo").checked; store.set("pk-come-geo", geo ? "1" : "0");
+  const btn = $("#come-go"); btn.disabled = true;
+  let pos = null;
+  if (geo) { btn.textContent = "Suche Standort …"; pos = await getPosSafe(); if (!pos) toast("Standort ging nicht. Ich sag trotzdem Bescheid.", true); }
+  btn.textContent = "Ich komme!";
+  const ok = await run(db.rpc("answer_prost", { p_session: comeSid, p_kind: "coming", p_lat: pos?.[0] ?? null, p_lng: pos?.[1] ?? null }), "Ist Bescheid gegeben");
+  btn.disabled = false;
+  if (ok) $("#come-sheet").hidden = true;
+});
+
+/* Unterwegs: Standort jede Minute auffrischen, solange die App offen ist */
+async function trackWalk() {
+  if (!me || !S.prostReady || document.visibilityState !== "visible" || trackWalk.busy) return;
+  const liveIds = new Set(P().sessions.filter(isLive).map(s => s.id));
+  const mine = P().joins.filter(j => j.member_id === me.id && j.kind === "coming" && !j.arrived_at && j.lat != null && liveIds.has(j.session_id));
+  if (!mine.length) return;
+  trackWalk.busy = true;
+  try {
+    const pos = await getPosSafe(); if (!pos) return;
+    for (const j of mine) if (pos[0] !== j.lat || pos[1] !== j.lng || agoMin(j.loc_at) >= 5)
+      await db.rpc("update_prost_location", { p_session: j.session_id, p_lat: pos[0], p_lng: pos[1] });
+  } finally { trackWalk.busy = false; }
+}
+setInterval(trackWalk, 60000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(trackWalk, 1500); });
+async function walkAction(t) {
+  if (t.dataset.arrive) return run(db.rpc("arrive_prost", { p_session: +t.dataset.arrive }), "Angekommen. Prost!");
+  if (t.dataset.stoploc) return run(db.rpc("stop_prost_location", { p_session: +t.dataset.stoploc }), "Standort wird nicht mehr geteilt");
+  if (t.dataset.startloc) {
+    const pos = await getPosSafe(); if (!pos) return toast("Standort ging nicht. Erlaub ihn in den Einstellungen.", true);
+    store.set("pk-come-geo", "1");
+    return run(db.rpc("answer_prost", { p_session: +t.dataset.startloc, p_kind: "coming", p_lat: pos[0], p_lng: pos[1] }), "Standort wird geteilt");
+  }
+}
+
 async function answerProst(sid, kind) {
   const cur = joinsOf(sid).find(j => j.member_id === me.id);
   if (cur?.kind === kind) return run(db.from("prost_joins").delete().eq("id", cur.id), "Zurückgenommen");
+  if (kind === "coming") return openComeSheet(sid);
   return run(db.rpc("answer_prost", { p_session: sid, p_kind: kind }), kind === "coming" ? "Ist Bescheid gegeben" : "Prost zurück!");
 }
 $("#prost-push").addEventListener("change", async e => {
@@ -1032,6 +1107,7 @@ document.addEventListener("click", async e => {
   if (t.dataset.wperiod) { wallPeriod = t.dataset.wperiod; store.set("pk-wall-period", wallPeriod); return renderWallDrinks(); }
   if (t.dataset.drink) return addDrink(t.dataset.drink);
   if (t.dataset.join) return answerProst(+t.dataset.join, t.dataset.k);
+  if (t.dataset.arrive || t.dataset.stoploc || t.dataset.startloc) return walkAction(t);
   if (a === "hide-install") { store.set("pk-install-hidden", "1"); $("#install-card").hidden = true; return; }
   if (a === "add-opt") {
     const n = $$(".poll-opt").length; if (n >= 6) return toast("Mehr als 6 Antworten gehen nicht.");
