@@ -726,7 +726,7 @@ $("#chat-push").addEventListener("change", async e => {
 
 /* ---------- Prost (wie Beer With Me) ---------- */
 const DRINKS = {
-  bier: { e: "🍺", l: "Bier" }, radler: { e: "🍋", l: "Radler" }, wein: { e: "🍷", l: "Wein" },
+  bier_klein: { e: "🍺", l: "Bier 0,33", ml: 330 }, bier: { e: "🍺", l: "Bier 0,5", ml: 500 }, radler: { e: "🍋", l: "Radler" }, wein: { e: "🍷", l: "Wein" },
   sekt: { e: "🥂", l: "Sekt" }, longdrink: { e: "🍹", l: "Longdrink" }, cocktail: { e: "🍸", l: "Cocktail" },
   shot: { e: "🥃", l: "Shot" }, alkfrei: { e: "🧃", l: "Alkoholfrei" }, wasser: { e: "💧", l: "Wasser" }
 };
@@ -897,6 +897,9 @@ async function renderProstMap() {
 
 
 /* Wall of Fame: Trinkerkoenig mit Podest */
+const NON_ALC = new Set(["alkfrei", "wasser"]);
+const beerLitres = list => list.reduce((sum, d) => sum + (DRINKS[d.kind]?.ml || 0), 0) / 1000;
+const fmtL = l => l.toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " l Bier";
 let wallPeriod = store.get("pk-wall-period") || "month";
 function renderWallDrinks() {
   $("#wall-drinks").hidden = !S.prostReady;
@@ -905,22 +908,22 @@ function renderWallDrinks() {
   const from = periodStart(wallPeriod).toISOString();
   const ids = new Set(P().sessions.filter(s => s.started_at >= from).map(s => s.id));
   const per = {};
-  P().drinks.filter(d => ids.has(d.session_id)).forEach(d => { const p = per[d.member_id] ||= { n: 0, list: [] }; p.n++; p.list.push(d); });
+  P().drinks.filter(d => ids.has(d.session_id) && !NON_ALC.has(d.kind)).forEach(d => { const p = per[d.member_id] ||= { n: 0, list: [] }; p.n++; p.list.push(d); });
   const list = Object.entries(per).map(([id, v]) => ({ id: +id, ...v })).sort((a, b) => b.n - a.n);
-  if (!list.length) { $("#wall-podium").innerHTML = `<div class="empty">In diesem Zeitraum hat noch niemand Prost gerufen. Der Thron ist frei.</div>`; return; }
+  if (!list.length) { $("#wall-podium").innerHTML = `<div class="empty">In diesem Zeitraum wurde noch kein Alkohol gezählt. Der Thron ist frei.</div>`; return; }
   // Gleich viele Getraenke = gleicher Platz
   let place = 0, last = null;
   list.forEach((r, i) => { if (r.n !== last) { place = i + 1; last = r.n; } r.place = place; });
-  const top = list.slice(0, 3), rest = list.slice(3);
+  const top = list.slice(0, 3), rest = list.slice(3), firsts = list.filter(r => r.place === 1);
   const order = [top[1], top[0], top[2]].filter(Boolean);
   const step = r => `<div class="step p${Math.min(r.place, 3)}${r.id === me.id ? " mine" : ""}">
       <div class="av">${esc(nameOf(r.id)[0])}</div>
       <b class="st-name">${esc(nameOf(r.id))}</b>
-      <span class="st-n">${plural(r.n, "Getränk", "Getränke")}</span>
+      <span class="st-n">${plural(r.n, "Getränk", "Getränke")}${beerLitres(r.list) ? `<br>${fmtL(beerLitres(r.list))}` : ""}</span>
       <div class="block"><span>${r.place}</span></div></div>`;
   $("#wall-podium").innerHTML = `<div class="podium${top.length === 1 ? " solo" : ""}">${order.map(step).join("")}</div>
-    ${rest.length ? `<ol class="rest">${rest.map(r => `<li${r.id === me.id ? ' class="mine"' : ""}><span class="pos">${r.place}</span><span class="rn">${esc(nameOf(r.id))}</span><span class="count">${plural(r.n, "Getränk", "Getränke")}</span></li>`).join("")}</ol>` : ""}
-    <p class="count wall-sum">Auf Platz 1 hat ${esc(nameOf(top[0].id))} getrunken: ${esc(drinkSummary(top[0].list))}</p>`;
+    ${rest.length ? `<ol class="rest">${rest.map(r => `<li${r.id === me.id ? ' class="mine"' : ""}><span class="pos">${r.place}</span><span class="rn">${esc(nameOf(r.id))}</span><span class="count">${plural(r.n, "Getränk", "Getränke")}${beerLitres(r.list) ? " · " + fmtL(beerLitres(r.list)) : ""}</span></li>`).join("")}</ol>` : ""}
+    <p class="count wall-sum">${firsts.length > 1 ? `Gleichstand auf Platz 1: ${esc(listNames(firsts.map(r => r.id)))}` : `Auf Platz 1 hat ${esc(nameOf(top[0].id))} getrunken: ${esc(drinkSummary(top[0].list))}`}</p>`;
 }
 
 /* Prost rufen */
