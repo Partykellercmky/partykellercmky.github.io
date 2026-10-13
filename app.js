@@ -119,6 +119,7 @@ async function load(myId = me?.id) {
     const { data } = await db.from("join_requests").select("*").order("created_at");
     S.requests = data || [];
   }
+  await loadProst();
 }
 async function refresh() {
   if (busy || !me) return; busy = true;
@@ -135,7 +136,7 @@ const nameOf = id => S.members.find(m => m.id === id)?.name || "Ehemaliges Mitgl
 const canDelete = createdBy => me && (createdBy === me.id || me.is_admin);
 
 /* ---------- Anzeige ---------- */
-function render() { renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); }
+function render() { renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); }
 
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;
@@ -256,7 +257,7 @@ async function currentSub() {
 }
 async function renderPush() {
   const card = $("#push-card"), text = $("#push-text"), btn = $("#push-btn");
-  $("#chat-push-row").hidden = true;
+  $("#chat-push-row").hidden = true; $("#prost-push-row").hidden = true;
   card.hidden = false; btn.hidden = false; card.classList.remove("on");
   if (isIOS && !isStandalone()) { text.textContent = "Leg die App zuerst auf den Home-Bildschirm und öffne sie von dort. Dann kannst du Benachrichtigungen einschalten."; btn.hidden = true; return; }
   if (!pushSupported) { text.textContent = "Dein Browser kann leider keine Benachrichtigungen empfangen."; btn.hidden = true; return; }
@@ -270,11 +271,15 @@ async function renderPush() {
     db.rpc("save_push", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth }).then(({ error }) => { if (error) console.warn(error); });
   }
   card.classList.toggle("on", pushOn);
-  text.textContent = pushOn ? "Sind auf diesem Gerät an: neue Termine, Erinnerungen am Vortag und neue Abstimmungen." : "Bekomm Bescheid bei neuen Terminen, Abstimmungen, Chat-Nachrichten und am Tag vor einem Treffen.";
+  text.textContent = pushOn ? "Sind auf diesem Gerät an: neue Termine, Erinnerungen am Vortag, neue Abstimmungen und Antworten auf dein Prost." : "Bekomm Bescheid bei neuen Terminen, Abstimmungen, Chat-Nachrichten und am Tag vor einem Treffen.";
   $("#chat-push-row").hidden = !pushOn;
+  $("#prost-push-row").hidden = !pushOn || !S.prostReady;
   if (pushOn) {
-    const { data } = await db.from("push_subscriptions").select("chat").eq("endpoint", sub.endpoint).maybeSingle();
+    // Spalte "prost" gibt es erst nach prost.sql
+    let { data, error } = await db.from("push_subscriptions").select("chat,prost").eq("endpoint", sub.endpoint).maybeSingle();
+    if (error) ({ data } = await db.from("push_subscriptions").select("chat").eq("endpoint", sub.endpoint).maybeSingle());
     $("#chat-push").checked = data ? data.chat !== false : true;
+    $("#prost-push").checked = data ? data.prost !== false : true;
   }
   btn.textContent = pushOn ? "Ausschalten" : "Aktivieren";
   btn.classList.toggle("ghost", pushOn);
@@ -653,6 +658,7 @@ let chatChannel = null;
 const upsertBy = (arr, row, same) => { const i = arr.findIndex(x => same(x, row)); if (i >= 0) arr[i] = row; else arr.push(row); };
 async function startRealtime() {
   startPresence();
+  startProstRealtime();
   if (chatChannel) return;
   const { data: { session } } = await db.auth.getSession();
   if (session) { try { await db.realtime.setAuth(session.access_token); } catch {} }
@@ -718,6 +724,258 @@ $("#chat-push").addEventListener("change", async e => {
   toast(e.target.checked ? "Chat-Benachrichtigungen an" : "Chat stummgeschaltet (Erwähnungen und Antworten kommen trotzdem)");
 });
 
+/* ---------- Prost (wie Beer With Me) ---------- */
+const DRINKS = {
+  bier: { e: "🍺", l: "Bier" }, radler: { e: "🍋", l: "Radler" }, wein: { e: "🍷", l: "Wein" },
+  sekt: { e: "🥂", l: "Sekt" }, longdrink: { e: "🍹", l: "Longdrink" }, cocktail: { e: "🍸", l: "Cocktail" },
+  shot: { e: "🥃", l: "Shot" }, alkfrei: { e: "🧃", l: "Alkoholfrei" }, wasser: { e: "💧", l: "Wasser" }
+};
+let prostHours = +(store.get("pk-prost-hours") || 3);
+let prostPeriod = store.get("pk-prost-period") || "month";
+const P = () => S.prost || { sessions: [], drinks: [], joins: [] };
+const isLive = s => new Date(s.ends_at) > new Date();
+const drinksOf = sid => P().drinks.filter(d => d.session_id === sid).sort((a, b) => a.id - b.id);
+const joinsOf = sid => P().joins.filter(j => j.session_id === sid);
+const mySession = () => me && P().sessions.find(s => s.member_id === me.id && isLive(s));
+const liveOthers = () => P().sessions.filter(s => isLive(s) && s.member_id !== me?.id).sort((a, b) => b.started_at.localeCompare(a.started_at));
+const prostVisible = () => !$("#view-prost").hidden && !$("#screen-app").hidden;
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+function drinkSummary(list) {
+  const c = {}; list.forEach(d => c[d.kind] = (c[d.kind] || 0) + 1);
+  return Object.keys(DRINKS).filter(k => c[k]).map(k => `${c[k]}× ${DRINKS[k].l}`).join(", ");
+}
+function mapUrl(s) {
+  return isIOS ? `https://maps.apple.com/?q=${encodeURIComponent(nameOf(s.member_id))}&ll=${s.lat},${s.lng}`
+    : `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`;
+}
+
+/* Laden: Strichliste kann ueber 1000 Zeilen haben, darum seitenweise */
+async function fetchAll(make) {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await make().range(from, from + 999);
+    if (error) return { data: null, error };
+    out.push(...data);
+    if (data.length < 1000) return { data: out, error: null };
+  }
+}
+async function loadProst() {
+  const since = new Date(Date.now() - 400 * 864e5).toISOString();
+  const recent = new Date(Date.now() - 2 * 864e5).toISOString();
+  const [ss, ds, js] = await Promise.all([
+    fetchAll(() => db.from("prost_sessions").select("*").gte("started_at", since).order("id")),
+    fetchAll(() => db.from("prost_drinks").select("id,session_id,member_id,kind,created_at").gte("created_at", since).order("id")),
+    db.from("prost_joins").select("*").gte("created_at", recent)
+  ]);
+  // Tabellen gibt es erst nach prost.sql – bis dahin zeigt der Bereich einen Hinweis
+  S.prostReady = !ss.error;
+  S.prost = S.prostReady ? { sessions: ss.data, drinks: ds.data || [], joins: js.data || [] } : { sessions: [], drinks: [], joins: [] };
+}
+
+/* Anzeige */
+function renderProst() {
+  if (!me || !S.prost) return;
+  $("#prost-setup").hidden = S.prostReady; $("#prost-body").hidden = !S.prostReady;
+  const live = liveOthers();
+  const badge = $("#prost-badge"); badge.hidden = !live.length; badge.textContent = live.length;
+  if (!S.prostReady) return;
+  const mine = mySession();
+  $("#prost-off").hidden = !!mine;
+  $("#prost-mine").hidden = !mine;
+  if (mine) $("#prost-mine").innerHTML = mineHTML(mine);
+  $("#prost-live").innerHTML = live.length ? live.map(liveHTML).join("")
+    : `<div class="empty">${mine ? "Außer dir ist gerade niemand unterwegs." : "Gerade ist niemand unterwegs. Mach du den Anfang."}</div>`;
+  renderProstStats();
+  renderProstHistory();
+  if (prostVisible()) renderProstMap();
+}
+function mineHTML(s) {
+  const ds = drinksOf(s.id), js = joinsOf(s.id);
+  const coming = js.filter(j => j.kind === "coming").map(j => j.member_id), cheers = js.filter(j => j.kind === "cheers").map(j => j.member_id);
+  return `<div class="pm-head"><span class="live-dot"></span><b>Du bist unterwegs</b></div>
+    <p class="count">seit ${fmtTime(s.started_at)} · sichtbar bis ${fmtTime(s.ends_at)}${s.place ? " · " + esc(s.place) : ""}</p>
+    <div class="pm-count"><b>${ds.length}</b><span>${ds.length === 1 ? "Getränk" : "Getränke"}${ds.length ? `<small>${esc(drinkSummary(ds))}</small>` : ""}</span></div>
+    <span class="label">Noch eins? Antippen zählt mit.</span>
+    <div class="drink-quick">${Object.entries(DRINKS).map(([k, d]) => `<button type="button" class="drink-b" data-drink="${k}" aria-label="${d.l} zählen"><span>${d.e}</span>${d.l}</button>`).join("")}</div>
+    ${coming.length ? `<p class="pm-who"><b>Kommen vorbei:</b> ${esc(listNames(coming))}</p>` : ""}
+    ${cheers.length ? `<p class="pm-who"><b>Prost von:</b> ${esc(listNames(cheers))}</p>` : ""}
+    <div class="pm-acts">
+      <button class="btn ghost" type="button" data-action="prost-extend">+1 Stunde</button>
+      <button class="btn" type="button" data-action="prost-end">Ich geh nach Hause</button>
+    </div>
+    ${ds.length ? `<button class="link" type="button" data-action="prost-undo">Letztes Getränk zurücknehmen</button>` : ""}`;
+}
+function liveHTML(s) {
+  const ds = drinksOf(s.id), js = joinsOf(s.id), myJ = js.find(j => j.member_id === me.id)?.kind;
+  const coming = js.filter(j => j.kind === "coming").map(j => j.member_id);
+  const last = ds[ds.length - 1];
+  return `<article class="live">
+    <div class="av">${esc(nameOf(s.member_id)[0])}</div>
+    <div class="live-txt">
+      <h3>${esc(nameOf(s.member_id))}${last ? ` <span class="live-drink" title="${DRINKS[last.kind]?.l || ""}">${DRINKS[last.kind]?.e || ""}</span>` : ""}</h3>
+      <p class="count">seit ${fmtTime(s.started_at)} · ${plural(ds.length, "Getränk", "Getränke")}${s.place ? " · " + esc(s.place) : ""}</p>
+      ${s.lat != null ? `<a class="maplink" href="${mapUrl(s)}" target="_blank" rel="noopener">Route in Karten-App öffnen</a>` : ""}
+      <div class="rsvp">
+        <button class="chip${myJ === "coming" ? " on" : ""}" type="button" data-join="${s.id}" data-k="coming">Ich komme!</button>
+        <button class="chip${myJ === "cheers" ? " on" : ""}" type="button" data-join="${s.id}" data-k="cheers">Prost!</button>
+      </div>
+      ${coming.length ? `<p class="count live-coming">Kommen vorbei: ${esc(coming.map(id => id === me.id ? "du" : nameOf(id)).join(", "))}</p>` : ""}
+    </div></article>`;
+}
+function periodStart(p) {
+  const n = new Date();
+  if (p === "week") return new Date(n.getTime() - 7 * 864e5);
+  if (p === "month") return new Date(n.getFullYear(), n.getMonth(), 1);
+  return new Date(n.getFullYear(), 0, 1);
+}
+function renderProstStats() {
+  $$("#prost-period [data-period]").forEach(b => b.classList.toggle("on", b.dataset.period === prostPeriod));
+  const from = periodStart(prostPeriod);
+  const ss = P().sessions.filter(s => new Date(s.started_at) >= from), ids = new Set(ss.map(s => s.id));
+  const ds = P().drinks.filter(d => ids.has(d.session_id));
+  const per = {};
+  ss.forEach(s => (per[s.member_id] ||= { n: 0, d: 0 }).n++);
+  ds.forEach(d => (per[d.member_id] ||= { n: 0, d: 0 }).d++);
+  const list = Object.entries(per).map(([id, v]) => ({ id: +id, ...v })).sort((a, b) => b.n - a.n || b.d - a.d);
+  if (!list.length) { $("#prost-stats").innerHTML = `<div class="empty">In diesem Zeitraum wurde noch nicht angestoßen.</div>`; return; }
+  const kinds = {}; ds.forEach(d => kinds[d.kind] = (kinds[d.kind] || 0) + 1);
+  const fav = Object.entries(kinds).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const max = list[0].n || 1;
+  $("#prost-stats").innerHTML = `<div class="rank prost-stats">
+    <p class="count">${plural(ss.length, "Runde", "Runden")} · ${plural(ds.length, "Getränk", "Getränke")}${fav ? ` · am häufigsten: ${DRINKS[fav].l}` : ""}</p>
+    <ol>${list.map((r, k) => `<li${r.id === me.id ? ' class="mine"' : ""}><span class="pos">${k + 1}</span><div>
+      <div class="who"><span>${esc(nameOf(r.id))}</span><span class="count">${plural(r.n, "Runde", "Runden")} · ${plural(r.d, "Getränk", "Getränke")}</span></div>
+      <div class="track"><div style="width:${r.n / max * 100}%"></div></div></div></li>`).join("")}</ol></div>`;
+}
+function renderProstHistory() {
+  const mine = P().sessions.filter(s => s.member_id === me.id && !isLive(s)).sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 8);
+  $("#prost-history").innerHTML = mine.length ? mine.map(s => {
+    const ds = drinksOf(s.id);
+    return `<div class="hist"><div class="hist-txt"><b>${dayLabel(s.started_at)}</b> <span class="count">${fmtTime(s.started_at)} bis ${fmtTime(s.ends_at)}</span>
+      ${s.place ? `<div class="count">${esc(s.place)}</div>` : ""}<div class="hist-d">${ds.length ? esc(drinkSummary(ds)) : "Nichts gezählt"}</div></div>
+      ${delBtn("prost", s.id, s.member_id)}</div>`;
+  }).join("") : `<div class="empty">Noch keine Runde. Wenn du "Ich geh nach Hause" tippst, landet sie hier.</div>`;
+}
+
+/* Karte (Leaflet wird erst geladen, wenn jemand seinen Standort teilt) */
+let leafletP = null, pMap = null, pLayer = null, pMapKey = "";
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (!leafletP) leafletP = new Promise((res, rej) => {
+    const css = document.createElement("link"); css.rel = "stylesheet";
+    css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(css);
+    const js = document.createElement("script"); js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    js.onload = res; js.onerror = () => { leafletP = null; rej(new Error("Karte konnte nicht geladen werden")); };
+    document.head.appendChild(js);
+  });
+  return leafletP;
+}
+async function renderProstMap() {
+  const pts = P().sessions.filter(s => isLive(s) && s.lat != null && s.lng != null);
+  const el = $("#prost-map"); el.hidden = !pts.length;
+  if (!pts.length) { pMapKey = ""; return; }
+  try { await loadLeaflet(); } catch { el.hidden = true; return; }
+  if (!pMap) {
+    pMap = L.map(el, { zoomControl: false, scrollWheelZoom: false });
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19, subdomains: "abcd", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    }).addTo(pMap);
+    pLayer = L.layerGroup().addTo(pMap);
+  }
+  pMap.invalidateSize();
+  pLayer.clearLayers();
+  pts.forEach(s => {
+    const n = drinksOf(s.id).length;
+    L.marker([s.lat, s.lng], { icon: L.divIcon({ className: "pin" + (s.member_id === me.id ? " mine" : ""), html: `<span>${esc(nameOf(s.member_id)[0])}</span>`, iconSize: [36, 36], iconAnchor: [18, 18], popupAnchor: [0, -16] }) })
+      .bindPopup(`<b>${esc(s.member_id === me.id ? "Du" : nameOf(s.member_id))}</b>${s.place ? "<br>" + esc(s.place) : ""}<br>${plural(n, "Getränk", "Getränke")} seit ${fmtTime(s.started_at)}`)
+      .addTo(pLayer);
+  });
+  const key = pts.map(s => `${s.id}:${s.lat},${s.lng}`).join("|");
+  if (key !== pMapKey) { pMapKey = key; pMap.fitBounds(L.latLngBounds(pts.map(s => [s.lat, s.lng])), { padding: [40, 40], maxZoom: 15 }); }
+}
+
+/* Prost rufen */
+function renderHours() { $$("#prost-hours [data-hours]").forEach(b => b.classList.toggle("on", +b.dataset.hours === prostHours)); }
+function openProstSheet() {
+  const last = store.get("pk-prost-kind") || "bier";
+  $("#prost-kinds").innerHTML = Object.entries(DRINKS).map(([k, d]) => `<label class="drink"><input type="radio" name="prost-kind" value="${k}"${k === last ? " checked" : ""}><span class="d-in"><span class="e">${d.e}</span>${d.l}</span></label>`).join("");
+  $("#prost-place").value = store.get("pk-prost-place") || "";
+  $("#prost-geo").checked = store.get("pk-prost-geo") === "1";
+  $("#prost-notify").checked = true;
+  renderHours();
+  $("#prost-sheet").hidden = false;
+}
+const closeProstSheet = () => $("#prost-sheet").hidden = true;
+$("#prost-sheet").addEventListener("click", e => { if (e.target.id === "prost-sheet") closeProstSheet(); });
+const getPos = () => new Promise((res, rej) => navigator.geolocation
+  ? navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000, maximumAge: 120000 }) : rej(new Error("kein GPS")));
+
+$("#prost-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const kind = document.querySelector('input[name="prost-kind"]:checked')?.value;
+  if (!kind) return toast("Wähl erst ein Getränk aus.", true);
+  const place = $("#prost-place").value.trim(), geo = $("#prost-geo").checked, notify = $("#prost-notify").checked;
+  store.set("pk-prost-kind", kind); store.set("pk-prost-place", place); store.set("pk-prost-geo", geo ? "1" : "0");
+  const btn = $("#prost-go"); btn.disabled = true;
+  let lat = null, lng = null;
+  if (geo) {
+    btn.textContent = "Suche Standort …";
+    try { const p = await getPos(); lat = +p.coords.latitude.toFixed(4); lng = +p.coords.longitude.toFixed(4); }
+    catch { toast("Standort ging nicht. Prost geht trotzdem raus.", true); }
+  }
+  btn.textContent = "Prost rufen";
+  const ok = await run(db.rpc("start_prost", { p_kind: kind, p_place: place, p_lat: lat, p_lng: lng, p_hours: prostHours, p_notify: notify }),
+    notify ? "Prost! Alle wissen Bescheid." : "Prost!");
+  btn.disabled = false;
+  if (ok) { closeProstSheet(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+});
+
+/* Strichliste und Runde steuern */
+async function addDrink(kind) {
+  const s = mySession(); if (!s) return;
+  const tmp = { id: Number.MAX_SAFE_INTEGER - P().drinks.length, session_id: s.id, member_id: me.id, kind, created_at: new Date().toISOString() };
+  P().drinks.push(tmp); renderProst();
+  if (navigator.vibrate) navigator.vibrate(30);
+  await run(db.from("prost_drinks").insert({ session_id: s.id, member_id: me.id, kind }), `+1 ${DRINKS[kind].l}`);
+}
+async function prostAction(a) {
+  if (a === "prost-open") return openProstSheet();
+  if (a === "prost-close") return closeProstSheet();
+  const s = mySession(); if (!s) return;
+  if (a === "prost-end") return run(db.from("prost_sessions").update({ ends_at: new Date().toISOString() }).eq("id", s.id), "Gut heimkommen!");
+  if (a === "prost-extend") {
+    const cap = new Date(s.started_at).getTime() + 12 * 36e5;
+    const next = Math.min(Math.max(new Date(s.ends_at).getTime(), Date.now()) + 36e5, cap);
+    if (next <= new Date(s.ends_at).getTime()) return toast("Länger als 12 Stunden geht eine Runde nicht.", true);
+    return run(db.from("prost_sessions").update({ ends_at: new Date(next).toISOString() }).eq("id", s.id), "Eine Stunde länger sichtbar");
+  }
+  if (a === "prost-undo") {
+    const last = drinksOf(s.id).filter(d => d.member_id === me.id).pop(); if (!last) return;
+    return run(db.from("prost_drinks").delete().eq("id", last.id), "Zurückgenommen");
+  }
+}
+async function answerProst(sid, kind) {
+  const cur = joinsOf(sid).find(j => j.member_id === me.id);
+  if (cur?.kind === kind) return run(db.from("prost_joins").delete().eq("id", cur.id), "Zurückgenommen");
+  return run(db.rpc("answer_prost", { p_session: sid, p_kind: kind }), kind === "coming" ? "Ist Bescheid gegeben" : "Prost zurück!");
+}
+$("#prost-push").addEventListener("change", async e => {
+  const sub = await currentSub(); if (!sub) return;
+  const { error } = await db.rpc("set_push_prost", { p_endpoint: sub.endpoint, p_on: e.target.checked });
+  if (error) { e.target.checked = !e.target.checked; return fail(error); }
+  toast(e.target.checked ? "Prost-Meldungen an" : "Prost-Meldungen aus (Antworten auf dein Prost kommen trotzdem)");
+});
+
+/* Live: wenn jemand Prost ruft, zaehlt oder antwortet */
+let prostChannel = null, prostTimer = null;
+function startProstRealtime() {
+  if (prostChannel || !S.prostReady) return;
+  const changed = () => { clearTimeout(prostTimer); prostTimer = setTimeout(async () => { try { await loadProst(); renderProst(); } catch {} }, 400); };
+  prostChannel = db.channel("partykeller-prost");
+  ["prost_sessions", "prost_drinks", "prost_joins"].forEach(table => prostChannel.on("postgres_changes", { event: "*", schema: "public", table }, changed));
+  prostChannel.subscribe();
+}
+
 /* ---------- Aktionen ---------- */
 const pendingDelete = new Set();
 document.addEventListener("click", async e => {
@@ -726,6 +984,7 @@ document.addEventListener("click", async e => {
     $$("[data-tab]").forEach(b => b.setAttribute("aria-selected", b === t));
     $$(".view").forEach(v => v.hidden = v.id !== "view-" + t.dataset.tab);
     store.set("pk-tab", t.dataset.tab);
+    if (t.dataset.tab === "prost") renderProstMap();
     if (t.dataset.tab === "chat") { renderChat.done = false; if (S.messages) renderChat(); renderStatus(); } else { window.scrollTo({ top: 0 }); closeSheet(); setTyping(false); }
     updateChatBadge();
     return;
@@ -734,6 +993,11 @@ document.addEventListener("click", async e => {
   if (a === "logout") return logout();
   if (a === "push-toggle") return togglePush();
   if (a === "recheck") return boot();
+  if (a && a.startsWith("prost-")) return prostAction(a);
+  if (t.dataset.hours) { prostHours = +t.dataset.hours; store.set("pk-prost-hours", prostHours); return renderHours(); }
+  if (t.dataset.period) { prostPeriod = t.dataset.period; store.set("pk-prost-period", prostPeriod); return renderProstStats(); }
+  if (t.dataset.drink) return addDrink(t.dataset.drink);
+  if (t.dataset.join) return answerProst(+t.dataset.join, t.dataset.k);
   if (a === "hide-install") { store.set("pk-install-hidden", "1"); $("#install-card").hidden = true; return; }
   if (a === "add-opt") {
     const n = $$(".poll-opt").length; if (n >= 6) return toast("Mehr als 6 Antworten gehen nicht.");
@@ -760,7 +1024,7 @@ document.addEventListener("click", async e => {
       return;
     }
     pendingDelete.delete(key);
-    const table = { event: "events", poll: "polls", quote: "quotes", rank: "rankings", msg: "messages" }[t.dataset.del];
+    const table = { event: "events", poll: "polls", quote: "quotes", rank: "rankings", msg: "messages", prost: "prost_sessions" }[t.dataset.del];
     return run(db.from(table).delete().eq("id", +t.dataset.id), "Gelöscht");
   }
   if (t.dataset.approve) {
@@ -826,8 +1090,14 @@ setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 60
 
 /* Letzten Bereich merken */
 const hashTab = location.hash.slice(1);
-const lastTab = ["termine", "chat", "wall", "gruppe", "admin"].includes(hashTab) ? hashTab : store.get("pk-tab");
+const lastTab = ["termine", "prost", "chat", "wall", "gruppe", "admin"].includes(hashTab) ? hashTab : store.get("pk-tab");
 if (lastTab && (lastTab !== "admin" || hashTab === "admin")) { const b = document.querySelector(`[data-tab="${lastTab}"]`); if (b) b.click(); }
+
+/* Antippen einer Benachrichtigung bei offener App: passenden Bereich zeigen */
+window.addEventListener("hashchange", () => {
+  const b = document.querySelector(`[data-tab="${location.hash.slice(1)}"]`);
+  if (b && !b.hidden && !$("#screen-app").hidden) b.click();
+});
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 db.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") show("login"); });

@@ -28,7 +28,13 @@ const berlinDate = (offsetDays: number) => {
 };
 
 type Msg = { title: string; body: string; url: string; tag: string; mid?: number };
-type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; auth: string; chat?: boolean };
+type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; auth: string; chat?: boolean; prost?: boolean };
+
+// Prost: was jemand in der Hand hat
+const DRINKS: Record<string, string> = {
+  bier: "ein Bier", radler: "ein Radler", wein: "einen Wein", sekt: "einen Sekt", longdrink: "einen Longdrink",
+  cocktail: "einen Cocktail", shot: "einen Shot", alkfrei: "was Alkoholfreies", wasser: "ein Wasser",
+};
 
 async function subsFor(filter: (s: Sub) => boolean): Promise<Sub[]> {
   const { data, error } = await db.from("push_subscriptions").select("*");
@@ -118,6 +124,36 @@ Deno.serve(async (req) => {
         sent += r.sent; removed += r.removed;
       }
       return Response.json({ sent, removed });
+    }
+    if (type === "prost") {
+      const { data: s, error } = await db.from("prost_sessions").select("id,member_id,place").eq("id", id).maybeSingle();
+      if (error) throw error;
+      if (!s) return Response.json({ skipped: true, grund: "Runde " + id + " nicht gefunden" });
+      const { data: d } = await db.from("prost_drinks").select("kind").eq("session_id", id).order("id").limit(1).maybeSingle();
+      const { data: who } = await db.from("members").select("name").eq("id", s.member_id).maybeSingle();
+      const subs = await subsFor((x) => x.member_id !== s.member_id && x.prost !== false);
+      return Response.json(await send(subs, {
+        title: (who?.name || "Jemand") + " ruft Prost!",
+        body: "Hat gerade " + (DRINKS[d?.kind] || "was") + " in der Hand" + (s.place ? " · " + s.place : "") + ". Komm vorbei!",
+        url: "./#prost", tag: "prost-" + id,
+      }));
+    }
+    if (type === "prost_join") {
+      const { data: j, error } = await db.from("prost_joins").select("session_id,member_id,kind").eq("id", id).maybeSingle();
+      if (error) throw error;
+      if (!j) return Response.json({ skipped: true, grund: "Antwort " + id + " nicht gefunden" });
+      const { data: s } = await db.from("prost_sessions").select("member_id").eq("id", j.session_id).maybeSingle();
+      if (!s) return Response.json({ skipped: true, grund: "Runde nicht gefunden" });
+      const { data: who } = await db.from("members").select("name").eq("id", j.member_id).maybeSingle();
+      const name = who?.name || "Jemand";
+      // Direkte Antwort: kommt auch an, wenn Prost-Meldungen auf dem Geraet aus sind
+      const subs = await subsFor((x) => x.member_id === s.member_id);
+      const coming = j.kind === "coming";
+      return Response.json(await send(subs, {
+        title: coming ? name + " kommt vorbei!" : name + " sagt Prost!",
+        body: coming ? "Halt schon mal einen Platz frei." : "Prost aus der Ferne.",
+        url: "./#prost", tag: "prost-join-" + id,
+      }));
     }
     if (type === "reminder") {
       const tomorrow = berlinDate(1);

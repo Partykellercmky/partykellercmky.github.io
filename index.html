@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 <div class="wrap">
@@ -73,6 +73,7 @@
         <div class="push-txt"><b>Benachrichtigungen</b><p id="push-text"></p></div>
         <button class="btn" type="button" id="push-btn" data-action="push-toggle">Aktivieren</button>
         <label class="switch-row" id="chat-push-row" for="chat-push" hidden><input type="checkbox" id="chat-push"> Auch bei neuen Chat-Nachrichten</label>
+        <label class="switch-row" id="prost-push-row" for="prost-push" hidden><input type="checkbox" id="prost-push"> Wenn jemand Prost ruft</label>
       </section>
       <section>
         <h2>Wer drin ist</h2>
@@ -125,6 +126,57 @@
         </details>
         <div class="panel" id="polls"></div>
       </section>
+    </div>
+
+    <div id="view-prost" class="view" hidden>
+      <div id="prost-setup" class="card" hidden>
+        <h2>Prost kommt gleich</h2>
+        <p class="muted">Dieser Bereich ist noch nicht eingerichtet. Gerrit muss dafür einmal prost.sql in Supabase ausführen.</p>
+      </div>
+      <div id="prost-body">
+        <section id="prost-off" class="prost-hero">
+          <button class="prost-btn" type="button" data-action="prost-open"><span>Prost!</span></button>
+          <p class="lead">Tipp drauf, wenn du was trinkst. Die anderen sehen es und können vorbeikommen.</p>
+        </section>
+        <section id="prost-mine" class="card prost-mine" hidden></section>
+        <section>
+          <h2>Gerade unterwegs</h2>
+          <div id="prost-map" class="prost-map" hidden></div>
+          <div class="panel" id="prost-live"></div>
+        </section>
+        <section>
+          <h2>Kellerstatistik</h2>
+          <div class="seg" id="prost-period">
+            <button type="button" data-period="week">7 Tage</button>
+            <button type="button" data-period="month">Monat</button>
+            <button type="button" data-period="year">Jahr</button>
+          </div>
+          <div id="prost-stats"></div>
+        </section>
+        <section>
+          <h2>Deine letzten Runden</h2>
+          <div class="panel" id="prost-history"></div>
+        </section>
+      </div>
+      <div id="prost-sheet" class="sheet" hidden>
+        <form class="sheet-card" id="prost-form" role="dialog" aria-label="Prost rufen">
+          <h2>Was trinkst du?</h2>
+          <div class="drink-grid" id="prost-kinds"></div>
+          <label for="prost-place" class="label">Wo bist du? (freiwillig)</label>
+          <input id="prost-place" maxlength="60" placeholder="z. B. Partykeller, Kneipe, bei Tobi">
+          <label class="switch-row" for="prost-geo"><input type="checkbox" id="prost-geo"> Standort für die Karte mitschicken</label>
+          <span class="label">Wie lange ungefähr?</span>
+          <div class="seg" id="prost-hours">
+            <button type="button" data-hours="1">1 Std.</button>
+            <button type="button" data-hours="2">2 Std.</button>
+            <button type="button" data-hours="3">3 Std.</button>
+            <button type="button" data-hours="5">5 Std.</button>
+          </div>
+          <label class="switch-row" for="prost-notify"><input type="checkbox" id="prost-notify" checked> Alle per Push benachrichtigen</label>
+          <button class="btn" type="submit" id="prost-go">Prost rufen</button>
+          <button class="link" type="button" data-action="prost-close">Abbrechen</button>
+        </form>
+      </div>
     </div>
 
     <div id="view-chat" class="view" hidden>
@@ -204,6 +256,7 @@
 <nav id="tabs" role="tablist" aria-label="Bereiche" hidden>
   <button role="tab" data-tab="gruppe" aria-selected="true">Gruppe</button>
   <button role="tab" data-tab="termine" aria-selected="false">Termine</button>
+  <button role="tab" data-tab="prost" aria-selected="false" class="prost-tab">Prost<span class="badge" id="prost-badge" hidden></span></button>
   <button role="tab" data-tab="chat" aria-selected="false">Chat<span class="badge" id="chat-badge" hidden></span></button>
   <button role="tab" data-tab="wall" aria-selected="false">Wall of Fame</button>
   <button role="tab" data-tab="admin" aria-selected="false" id="tab-admin" hidden>Admin<span class="badge" id="req-badge" hidden></span></button>
@@ -211,6 +264,6 @@
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
