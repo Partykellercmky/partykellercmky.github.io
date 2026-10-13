@@ -1297,9 +1297,9 @@ async function newsAction(t) {
 }
 
 /* ---------- Navigation: Start, Termine, Prost, Chat, Mehr ---------- */
-const VIEWS = ["start", "termine", "prost", "chat", "mehr", "neues", "gruppe", "wall", "einstellungen", "admin"];
-const UNDER_MORE = { neues: 1, gruppe: 1, wall: 1, einstellungen: 1, admin: 1 };
-const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", neues: "Neues", gruppe: "Gruppe", wall: "Wall of Fame", einstellungen: "Einstellungen", admin: "Admin" };
+const VIEWS = ["start", "termine", "prost", "chat", "mehr", "neues", "gruppe", "wall", "anleitungen", "einstellungen", "admin"];
+const UNDER_MORE = { neues: 1, gruppe: 1, wall: 1, anleitungen: 1, einstellungen: 1, admin: 1 };
+const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", neues: "Neues", gruppe: "Gruppe", wall: "Wall of Fame", anleitungen: "Anleitungen", einstellungen: "Einstellungen", admin: "Admin" };
 let currentView = "start";
 function updateHeader() {
   const inApp = !$("#screen-app").hidden;

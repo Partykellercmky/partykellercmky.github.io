@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 <div class="wrap">
@@ -80,6 +80,7 @@
         <button type="button" data-tab="neues" id="menu-neues"><span class="mi"><svg viewBox="0 0 24 24"><path d="M12 3l1.9 4.8 5.1.4-3.9 3.3 1.2 5-4.3-2.7-4.3 2.7 1.2-5L5 8.2l5.1-.4z"/><path d="M5 20h14"/></svg></span><span class="mt"><b>Neues</b><small id="menu-neues-sub">Neue Funktionen und Wünsche</small></span><span class="badge" id="news-badge" hidden></span></button>
         <button type="button" data-tab="gruppe"><span class="mi"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.3 2.8-5 5.5-5s4.9 1.7 5.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.3c2.3.1 4.3 1.6 5 4.7"/></svg></span><span class="mt"><b>Gruppe</b><small id="menu-gruppe-sub">Wer drin ist</small></span></button>
         <button type="button" data-tab="wall"><span class="mi"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0z"/><path d="M7 6H4.5a2.5 2.5 0 0 0 3 3.5M17 6h2.5a2.5 2.5 0 0 1-3 3.5"/><path d="M12 13v4M8.5 20h7M10 17h4"/></svg></span><span class="mt"><b>Wall of Fame</b><small>König am Glas, Zitate, Rankings</small></span></button>
+        <button type="button" data-tab="anleitungen"><span class="mi"><svg viewBox="0 0 24 24"><path d="M5 4.5h5a2 2 0 0 1 2 2V20a1.5 1.5 0 0 0-1.5-1.5H5z"/><path d="M19 4.5h-5a2 2 0 0 0-2 2V20a1.5 1.5 0 0 1 1.5-1.5H19z"/></svg></span><span class="mt"><b>Anleitungen</b><small>So funktioniert die App</small></span></button>
         <button type="button" data-tab="einstellungen"><span class="mi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg></span><span class="mt"><b>Einstellungen</b><small>Benachrichtigungen, Steckbrief, Abmelden</small></span></button>
         <button type="button" data-tab="admin" id="tab-admin" hidden><span class="mi"><svg viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8.2-7.5 9.5-4.3-1.3-7.5-5-7.5-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.3-4.6"/></svg></span><span class="mt"><b>Admin</b><small>Anfragen und Logins</small></span><span class="badge" id="req-badge" hidden></span></button>
       </div>
@@ -120,6 +121,21 @@
           <button class="btn" type="submit" id="news-go">Veröffentlichen</button>
           <button class="link" type="button" data-action="news-close">Abbrechen</button>
         </form>
+      </div>
+    </div>
+
+    <div id="view-anleitungen" class="view" hidden>
+      <p class="lead">So funktioniert die App. Tipp auf einen Bereich, um die Anleitung aufzuklappen.</p>
+      <div class="guides">
+        <details class="guide"><summary><span><b>Erste Schritte</b><small>Die App aufs Handy holen und Benachrichtigungen einschalten.</small></span></summary><ol><li>Link im Browser öffnen: iPhone mit Safari, Android mit Chrome</li><li>iPhone: unten auf Teilen tippen, dann „Zum Home-Bildschirm“. Android: oben rechts auf die drei Punkte, dann „App installieren“</li><li>Ab jetzt die Partykeller App immer über das Symbol auf dem Home-Bildschirm öffnen</li><li>Unter Mehr und Einstellungen bei Benachrichtigungen auf Aktivieren tippen und erlauben</li><li>Im gleichen Bereich deinen Steckbrief eintragen, zum Beispiel „der DJ“</li></ol><p class="guide-tip">Auf dem iPhone kommen Benachrichtigungen nur, wenn die App über den Home-Bildschirm geöffnet wird.</p></details>
+        <details class="guide"><summary><span><b>Termine</b><small>Treffen planen und zu- oder absagen.</small></span></summary><ol><li>Unten auf Termine tippen</li><li>Mit dem Plus-Knopf oben rechts ein neues Treffen anlegen: Titel, Datum und kurze Info</li><li>Beim Treffen auf „Bin dabei“ oder „Kann nicht“ tippen. Nochmal tippen nimmt es zurück</li><li>Darunter siehst du, wer kommt und wer sich noch nicht gemeldet hat</li><li>Vergangene Treffen findest du ganz unten. Wer den Termin angelegt hat, kann ihn löschen</li></ol><p class="guide-tip">Am Tag vor einem Treffen bekommst du automatisch eine Erinnerung.</p></details>
+        <details class="guide"><summary><span><b>Playlist pro Termin</b><small>Songs für ein Treffen sammeln und abstimmen.</small></span></summary><ol><li>Bei Termine unter einem Treffen auf Playlist tippen, um sie aufzuklappen</li><li>In Spotify bei einem Song auf Teilen und „Link kopieren“ tippen und den Link einfügen</li><li>Oder einfach „Titel – Künstler“ eintippen und auf Song einreichen tippen</li><li>Mit dem Pfeil rechts für einen Song stimmen. Die beliebtesten stehen oben</li><li>Eigene Songs kannst du wieder löschen</li></ol><p class="guide-tip">Songs mit Spotify-Link haben ein Cover und öffnen sich meistens direkt in Spotify. Getippte Songs öffnen die Spotify-Suche, das kann je nach Handy auch erst im Browser aufgehen.</p></details>
+        <details class="guide"><summary><span><b>Abstimmungen</b><small>Die Gruppe über etwas entscheiden lassen.</small></span></summary><ol><li>Bei Termine oben auf Abstimmungen wechseln</li><li>Mit dem Plus-Knopf eine Frage und 2 bis 6 Antworten anlegen</li><li>Auf eine Antwort tippen, um abzustimmen. Nochmal tippen nimmt die Stimme zurück</li></ol></details>
+        <details class="guide"><summary><span><b>Prost</b><small>Der Gruppe sagen, dass du gerade was trinkst.</small></span></summary><ol><li>Unten in der Mitte auf Prost und dann auf den großen Knopf tippen</li><li>Getränk wählen, optional Ort und Standort, dann Prost rufen</li><li>Jedes weitere Getränk in der Strichliste antippen</li><li>Wenn jemand anders Prost ruft: mit „Ich komme!“ oder „Prost!“ antworten</li><li>Bei „Ich komme!“ kannst du deinen Standort teilen. Vor Ort auf „Bin angekommen“ tippen</li></ol><p class="guide-tip">Wer Prost ruft, schickt allen eine Benachrichtigung. Das kannst du unter Einstellungen ausschalten.</p></details>
+        <details class="guide"><summary><span><b>Chat</b><small>Mit der ganzen Gruppe schreiben.</small></span></summary><ol><li>Nachricht antippen: Reaktion, Antworten, Kopieren oder Bearbeiten</li><li>Eine Nachricht nach rechts wischen, um direkt zu antworten</li><li>Mit @Name jemanden erwähnen, mit @alle die ganze Gruppe</li><li>Links auf psst tippen und eine Person wählen, um zu flüstern. Das sehen nur ihr beide</li></ol><p class="guide-tip">Benachrichtigungen für den Chat schaltest du unter Einstellungen an oder aus.</p></details>
+        <details class="guide"><summary><span><b>Wall of Fame</b><small>König am Glas, Zitate und Rankings.</small></span></summary><ol><li>Unter Mehr auf Wall of Fame tippen</li><li>König am Glas: wer am meisten getrunken hat, für 7 Tage, Monat oder Jahr</li><li>Zitate: auf „Neues Zitat“ tippen, Spruch eintragen und auswählen, wer es gesagt hat</li><li>Rankings: eine Frage anlegen, zum Beispiel „Wer kommt immer zu spät?“, und eine Person wählen</li></ol></details>
+        <details class="guide"><summary><span><b>Neues und Wünsche</b><small>Neue Funktionen und eigene Ideen.</small></span></summary><ol><li>Unter Mehr auf Neues tippen, um zu sehen, was neu in der App ist</li><li>Im Reiter Wünsche eine eigene Idee eintragen</li><li>Bei den Ideen der anderen mit Daumen hoch abstimmen</li></ol></details>
+        <details class="guide"><summary><span><b>Wenn etwas nicht klappt</b><small>Die häufigsten Probleme.</small></span></summary><ol><li>Die App ganz schließen und neu öffnen. So lädt sie die neueste Version</li><li>Keine Benachrichtigungen: unter Einstellungen prüfen, ob sie an sind, und in den Handy-Einstellungen erlauben</li><li>Ausgeloggt: mit deiner E-Mail und deinem Passwort wieder einloggen</li><li>Hilft alles nichts: Gerrit Bescheid sagen</li></ol></details>
       </div>
     </div>
 
@@ -357,6 +373,6 @@
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

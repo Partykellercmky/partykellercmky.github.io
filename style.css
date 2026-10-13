@@ -445,8 +445,9 @@ textarea:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 .menu button:nth-child(1) .mi{color:var(--amber)}
 .menu button:nth-child(2) .mi{color:var(--teal)}
 .menu button:nth-child(3) .mi{color:var(--amber)}
-.menu button:nth-child(4) .mi{color:var(--muted)}
-.menu button:nth-child(5) .mi{color:var(--pink)}
+.menu button:nth-child(4) .mi{color:var(--teal)}
+.menu button:nth-child(5) .mi{color:var(--muted)}
+.menu button:nth-child(6) .mi{color:var(--pink)}
 .news{background:var(--wood-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 .news.unread{border-color:var(--amber);box-shadow:0 0 14px rgba(242,180,92,.15)}
 .news-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
@@ -504,3 +505,18 @@ textarea:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 .pl-vote b{font-variant-numeric:tabular-nums;font-size:.9rem}
 .pl-vote.on{border-color:var(--pink);color:var(--pink);box-shadow:0 0 10px rgba(255,79,163,.3)}
 .pl-empty{font-size:.9rem;margin:4px 0}
+
+/* Anleitungen */
+.guides{display:grid;gap:10px}
+details.guide{background:var(--wood-2);border:1px solid var(--line);border-radius:12px}
+details.guide[open]{border-color:var(--amber)}
+details.guide>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;min-height:64px}
+details.guide>summary::-webkit-details-marker{display:none}
+details.guide>summary b{display:block;color:var(--cream)}
+details.guide>summary small{display:block;color:var(--muted);font-size:.82rem}
+details.guide>summary::after{content:"";flex:none;width:9px;height:9px;border-right:2px solid var(--amber);border-bottom:2px solid var(--amber);transform:rotate(45deg) translateY(-3px);transition:transform .2s}
+details.guide[open]>summary::after{transform:rotate(225deg) translateY(-3px)}
+details.guide ol{margin:0;padding:0 16px 4px 38px;display:grid;gap:8px;font-size:.93rem}
+details.guide li::marker{color:var(--amber);font-family:var(--font-head);font-size:.8rem}
+.guide-tip{margin:10px 16px 16px;padding:10px 12px;border-left:3px solid var(--teal);background:var(--well);border-radius:0 8px 8px 0;color:var(--muted);font-size:.85rem}
+details.guide ol:last-child{padding-bottom:16px}
