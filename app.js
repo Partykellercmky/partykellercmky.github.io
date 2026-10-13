@@ -28,6 +28,7 @@ function fail(err) {
 function show(screen) {
   ["loading", "login", "request", "waiting", "app"].forEach(s => $("#screen-" + s).hidden = s !== screen);
   $("#tabs").hidden = screen !== "app";
+  if (typeof updateHeader === "function") updateHeader();
 }
 const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const fmtDate = iso => { const d = new Date(iso); return `${DAY[d.getDay()]}, ${d.getDate()}. ${MON[d.getMonth()]}`; };
@@ -90,6 +91,7 @@ async function boot() {
     $("#tab-admin").hidden = !me?.is_admin;
     show("app");
     render();
+    showView(initialView());
     startRealtime();
   } catch (err) { show("login"); fail(err); }
 }
@@ -136,11 +138,12 @@ const nameOf = id => S.members.find(m => m.id === id)?.name || "Ehemaliges Mitgl
 const canDelete = createdBy => me && (createdBy === me.id || me.is_admin);
 
 /* ---------- Anzeige ---------- */
-function render() { renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); }
+function render() { renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderStart(); }
 
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;
   $("#members-lead").textContent = `${S.members.length} Leute, ein Keller. ${joined} davon sind schon hier eingeloggt.`;
+  $("#menu-gruppe-sub").textContent = `${S.members.length} Leute, ${joined} eingeloggt`;
   $("#members").innerHTML = S.members.map(m => `<div class="member${m.user_id ? "" : " away"}${m.id === me.id ? " mine" : ""}" data-id="${m.id}">
     <div class="av">${esc(m.name[0])}</div>
     <div class="txt"><strong>${esc(m.name)}</strong><span class="${m.bio ? "bio" : ""}">${esc(m.bio || (m.user_id ? "Steckbrief folgt" : "noch nicht dabei"))}</span></div></div>`).join("");
@@ -220,6 +223,7 @@ function renderAdmin() {
   if (!me.is_admin) return;
   const free = S.members.filter(m => !m.user_id);
   const badge = $("#req-badge"); badge.hidden = !S.requests.length; badge.textContent = S.requests.length;
+  const more = $("#more-badge"); more.hidden = !S.requests.length; more.textContent = S.requests.length;
   $("#requests").innerHTML = S.requests.length ? S.requests.map(r => {
     const guess = free.find(m => m.name.toLowerCase() === r.name.trim().toLowerCase());
     return `<div class="req"><div><b>${esc(r.name)}</b><div class="mail">${esc(r.email)}</div></div>
@@ -930,7 +934,8 @@ const beerLitres = list => list.reduce((sum, d) => sum + (DRINKS[d.kind]?.ml || 
 const fmtL = l => l.toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " l Bier";
 let wallPeriod = store.get("pk-wall-period") || "month";
 function renderWallDrinks() {
-  $("#wall-drinks").hidden = !S.prostReady;
+  $("#wsub-king-btn").hidden = !S.prostReady;
+  setWallSub(wallSub);
   if (!S.prostReady) return;
   $$("#wall-period [data-wperiod]").forEach(b => b.classList.toggle("on", b.dataset.wperiod === wallPeriod));
   const from = periodStart(wallPeriod).toISOString();
@@ -999,7 +1004,7 @@ async function addDrink(kind) {
   await run(db.from("prost_drinks").insert({ session_id: s.id, member_id: me.id, kind }), `+1 ${DRINKS[kind].l}`);
 }
 async function prostAction(a) {
-  if (a === "prost-open") return openProstSheet();
+  if (a === "prost-open") { if (currentView !== "prost") showView("prost"); return openProstSheet(); }
   if (a === "prost-close") return closeProstSheet();
   const s = mySession(); if (!s) return;
   if (a === "prost-end") return run(db.from("prost_sessions").update({ ends_at: new Date().toISOString() }).eq("id", s.id), "Gut heimkommen!");
@@ -1084,20 +1089,144 @@ function startProstRealtime() {
   prostChannel.subscribe();
 }
 
+/* ---------- Navigation: Start, Termine, Prost, Chat, Mehr ---------- */
+const VIEWS = ["start", "termine", "prost", "chat", "mehr", "gruppe", "wall", "einstellungen", "admin"];
+const UNDER_MORE = { gruppe: 1, wall: 1, einstellungen: 1, admin: 1 };
+const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", gruppe: "Gruppe", wall: "Wall of Fame", einstellungen: "Einstellungen", admin: "Admin" };
+let currentView = "start";
+function updateHeader() {
+  const inApp = !$("#screen-app").hidden;
+  const big = !inApp || currentView === "start";
+  $("#big-header").hidden = !big;
+  $("#topbar").hidden = big || currentView === "chat";
+  $("#topbar-title").textContent = TITLES[currentView] || "";
+  $("#topbar-back").hidden = !UNDER_MORE[currentView];
+}
+function showView(name) {
+  if (!VIEWS.includes(name)) name = "start";
+  if (name === "admin" && !me?.is_admin) name = "mehr";
+  const nav = UNDER_MORE[name] ? "mehr" : name;
+  $$("#tabs [data-tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === nav));
+  $$(".view").forEach(v => v.hidden = v.id !== "view-" + name);
+  currentView = name;
+  store.set("pk-tab", name);
+  updateHeader();
+  if (name === "prost") renderProstMap();
+  if (name === "start" && me) renderStart();
+  if (name === "chat") { renderChat.done = false; if (S.messages) renderChat(); renderStatus(); }
+  else { window.scrollTo({ top: 0 }); closeSheet(); setTyping(false); }
+  updateChatBadge();
+}
+function initialView() {
+  const h = location.hash.slice(1);
+  if (VIEWS.includes(h)) return h;
+  const last = store.get("pk-tab");
+  return VIEWS.includes(last) && last !== "admin" ? last : "start";
+}
+
+/* Unterreiter */
+let termSub = store.get("pk-tsub") || "treffen";
+function setTermSub(v) {
+  termSub = v; store.set("pk-tsub", v);
+  $$("[data-tsub]").forEach(b => b.classList.toggle("on", b.dataset.tsub === v));
+  $("#tsub-treffen").hidden = v !== "treffen"; $("#tsub-polls").hidden = v !== "polls";
+}
+let wallSub = store.get("pk-wsub") || "king";
+function setWallSub(v) {
+  if (v === "king" && !S.prostReady) v = "quotes";
+  wallSub = v; store.set("pk-wsub", v);
+  $$("[data-wsub]").forEach(b => b.classList.toggle("on", b.dataset.wsub === v));
+  $$("[data-wsub-panel]").forEach(p => p.hidden = p.dataset.wsubPanel !== v);
+}
+
+/* Ein Plus-Knopf: neuer Termin oder neue Abstimmung */
+function setNewKind(k) {
+  $$("[data-newkind]").forEach(b => b.classList.toggle("on", b.dataset.newkind === k));
+  $("#event-form").hidden = k !== "event"; $("#poll-form").hidden = k !== "poll";
+}
+function openNew(kind) { setNewKind(kind || (termSub === "polls" ? "poll" : "event")); $("#new-sheet").hidden = false; }
+const closeNew = () => $("#new-sheet").hidden = true;
+$("#new-sheet").addEventListener("click", e => { if (e.target.id === "new-sheet") closeNew(); });
+
+/* ---------- Startseite: alles auf einen Blick ---------- */
+const daysUntil = iso => Math.round((new Date(iso + "T12:00") - new Date(today() + "T12:00")) / 864e5);
+const countdown = n => n === 0 ? "Heute" : n === 1 ? "Morgen" : `in ${n} Tagen`;
+function startBlock(label, tab, body, cls = "", extra = "") {
+  return `<section class="sblock ${cls}"><button type="button" class="shead" data-tab="${tab}" ${extra}><span>${label}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>${body}</section>`;
+}
+function renderStart() {
+  if (!me || !S.members) return;
+  const hour = new Date().getHours();
+  const hello = hour < 11 ? "Moin" : hour < 18 ? "Hey" : "Guten Abend";
+  let html = `<p class="hello">${hello}, <b>${esc(me.name)}</b></p>`;
+
+  // Naechstes Treffen
+  const next = [...S.events].filter(e => e.day >= today()).sort((a, b) => a.day.localeCompare(b.day))[0];
+  if (next) {
+    const rs = S.rsvps.filter(r => r.event_id === next.id), yes = rs.filter(r => r.status === "yes").length;
+    const mine = rs.find(r => r.member_id === me.id)?.status, n = daysUntil(next.day);
+    html += startBlock("Nächstes Treffen", "termine", `<div class="s-event">
+      <div class="s-count"><b>${countdown(n)}</b><small>${fmtDate(next.day + "T12:00")}</small></div>
+      <div class="s-ev-txt"><h3>${esc(next.title)}</h3>${next.info ? `<p class="count">${esc(next.info)}</p>` : ""}<p class="count">${yes} ${yes === 1 ? "kommt" : "kommen"}</p></div></div>
+      <div class="rsvp"><button class="chip${mine === "yes" ? " on" : ""}" data-rsvp="${next.id}" data-s="yes">Bin dabei</button><button class="chip${mine === "no" ? " on" : ""}" data-rsvp="${next.id}" data-s="no">Kann nicht</button></div>`, "s-next");
+  } else {
+    html += startBlock("Nächstes Treffen", "termine", `<p class="muted s-empty">Noch nichts geplant.</p><button class="btn ghost" type="button" data-action="start-new-event">Treffen planen</button>`);
+  }
+
+  // Gerade unterwegs
+  if (S.prostReady) {
+    const live = P().sessions.filter(isLive).sort((a, b) => b.started_at.localeCompare(a.started_at));
+    const body = live.length
+      ? `<ul class="s-live">${live.map(s => { const ds = drinksOf(s.id), last = ds[ds.length - 1];
+          return `<li><span class="av">${esc(nameOf(s.member_id)[0])}</span><span><span class="s-name"><b>${esc(s.member_id === me.id ? "Du" : nameOf(s.member_id))}</b> ${last ? DRINKS[last.kind]?.e || "" : ""}</span><small>${plural(ds.length, "Getränk", "Getränke")}${s.place ? " · " + esc(s.place) : ""}</small></span></li>`; }).join("")}</ul>`
+      : `<p class="muted s-empty">Gerade ist niemand unterwegs.</p>`;
+    html += startBlock("Gerade unterwegs", "prost", body + (mySession() ? "" : `<button class="btn s-prost" type="button" data-action="prost-open">Prost rufen</button>`), live.length ? "s-hot" : "");
+  }
+
+  // Abstimmung: zuerst eine, bei der ich noch nicht abgestimmt habe
+  const polls = [...S.polls].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const poll = polls.find(p => !S.pvotes.some(v => v.poll_id === p.id && v.member_id === me.id)) || polls[0];
+  if (poll) {
+    const opts = S.options.filter(o => o.poll_id === poll.id).sort((a, b) => a.id - b.id);
+    const votes = S.pvotes.filter(v => v.poll_id === poll.id), total = votes.length, mine = votes.find(v => v.member_id === me.id)?.option_id;
+    html += startBlock(mine ? "Abstimmung" : "Abstimmung · du fehlst noch", "termine", `<h3 class="s-q">${esc(poll.question)}</h3>
+      ${opts.map(o => { const n = votes.filter(v => v.option_id === o.id).length;
+        return `<button class="opt${mine === o.id ? " mine" : ""}" data-vote="${poll.id}" data-o="${o.id}"><div class="bar" style="width:${total ? Math.round(n / total * 100) : 0}%"></div><span>${esc(o.label)}</span><span class="n">${n}</span></button>`; }).join("")}`, "s-poll", 'data-tsubgo="polls"');
+  }
+
+  // Chat
+  const seen = seenId();
+  const unread = (S.messages || []).filter(m => m.id > seen && m.member_id !== me.id).length;
+  const lastMsg = (S.messages || [])[S.messages.length - 1];
+  html += startBlock(unread ? `Chat · ${unread} neu` : "Chat", "chat", lastMsg
+    ? `<button type="button" class="s-msg" data-tab="chat"><b>${esc(lastMsg.member_id === me.id ? "Du" : nameOf(lastMsg.member_id))}${lastMsg.whisper_to ? " (geflüstert)" : ""}:</b> ${esc(lastMsg.text.slice(0, 90))}${lastMsg.text.length > 90 ? " …" : ""}<small>${dayLabel(lastMsg.created_at)}, ${fmtTime(lastMsg.created_at)}</small></button>`
+    : `<p class="muted s-empty">Noch keine Nachrichten.</p>`, unread ? "s-unread" : "");
+
+  // Zitat des Tages
+  if (S.quotes.length) {
+    const qs = [...S.quotes].sort((a, b) => a.id - b.id);
+    const q = qs[Math.floor(Date.now() / 864e5) % qs.length];
+    html += startBlock("Zitat des Tages", "wall", `<figure class="quote s-quote"><p>${esc(q.text)}</p><footer><b>${esc(nameOf(q.said_by))}</b></footer></figure>`, "", 'data-wsubgo="quotes"');
+  }
+  $("#start").innerHTML = html;
+}
+
 /* ---------- Aktionen ---------- */
 const pendingDelete = new Set();
 document.addEventListener("click", async e => {
   const t = e.target.closest("button, [data-tab]"); if (!t || t.closest("#chat-list, #msg-sheet, #chat-form")) return;
   if (t.dataset.tab) {
-    $$("[data-tab]").forEach(b => b.setAttribute("aria-selected", b === t));
-    $$(".view").forEach(v => v.hidden = v.id !== "view-" + t.dataset.tab);
-    store.set("pk-tab", t.dataset.tab);
-    if (t.dataset.tab === "prost") renderProstMap();
-    if (t.dataset.tab === "chat") { renderChat.done = false; if (S.messages) renderChat(); renderStatus(); } else { window.scrollTo({ top: 0 }); closeSheet(); setTyping(false); }
-    updateChatBadge();
-    return;
+    if (t.dataset.tsubgo) setTermSub(t.dataset.tsubgo);
+    if (t.dataset.wsubgo) setWallSub(t.dataset.wsubgo);
+    return showView(t.dataset.tab);
   }
   const a = t.dataset.action;
+  if (t.dataset.tsub) return setTermSub(t.dataset.tsub);
+  if (t.dataset.wsub) return setWallSub(t.dataset.wsub);
+  if (t.dataset.newkind) return setNewKind(t.dataset.newkind);
+  if (a === "new-open") return openNew();
+  if (a === "new-close") return closeNew();
+  if (a === "start-new-event") { showView("termine"); setTermSub("treffen"); return openNew("event"); }
   if (a === "logout") return logout();
   if (a === "push-toggle") return togglePush();
   if (a === "recheck") return boot();
@@ -1160,7 +1289,7 @@ $("#bio-form").addEventListener("submit", async e => {
 $("#event-form").addEventListener("submit", async e => {
   e.preventDefault();
   const ok = await run(db.from("events").insert({ title: $("#ev-title").value.trim(), day: $("#ev-day").value, info: $("#ev-info").value.trim(), created_by: me.id }), "Termin angelegt");
-  if (ok) { e.target.reset(); $("#new-event").open = false; }
+  if (ok) { e.target.reset(); closeNew(); setTermSub("treffen"); }
 });
 
 $("#poll-form").addEventListener("submit", async e => {
@@ -1170,13 +1299,13 @@ $("#poll-form").addEventListener("submit", async e => {
   const { data, error } = await db.from("polls").insert({ question: $("#poll-q").value.trim(), created_by: me.id }).select("id").single();
   if (error) return fail(error);
   const ok = await run(db.from("poll_options").insert(labels.map(label => ({ poll_id: data.id, label }))), "Abstimmung gestartet");
-  if (ok) { e.target.reset(); $$(".poll-opt").slice(2).forEach(i => i.remove()); $("#new-poll").open = false; }
+  if (ok) { e.target.reset(); $$(".poll-opt").slice(2).forEach(i => i.remove()); closeNew(); setTermSub("polls"); }
 });
 
 $("#quote-form").addEventListener("submit", async e => {
   e.preventDefault();
   const ok = await run(db.from("quotes").insert({ text: $("#quote-text").value.trim(), said_by: +$("#quote-who").value, created_by: me.id }), "Hängt an der Wand");
-  if (ok) $("#quote-text").value = "";
+  if (ok) { $("#quote-text").value = ""; $("#new-quote").open = false; }
 });
 
 $("#rank-form").addEventListener("submit", async e => {
@@ -1198,15 +1327,12 @@ document.addEventListener("visibilitychange", () => {
 });
 setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 60000);
 
-/* Letzten Bereich merken */
-const hashTab = location.hash.slice(1);
-const lastTab = ["termine", "prost", "chat", "wall", "gruppe", "admin"].includes(hashTab) ? hashTab : store.get("pk-tab");
-if (lastTab && (lastTab !== "admin" || hashTab === "admin")) { const b = document.querySelector(`[data-tab="${lastTab}"]`); if (b) b.click(); }
+setTermSub(termSub);
 
 /* Antippen einer Benachrichtigung bei offener App: passenden Bereich zeigen */
 window.addEventListener("hashchange", () => {
-  const b = document.querySelector(`[data-tab="${location.hash.slice(1)}"]`);
-  if (b && !b.hidden && !$("#screen-app").hidden) b.click();
+  const h = location.hash.slice(1);
+  if (VIEWS.includes(h) && !$("#screen-app").hidden) showView(h);
 });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
