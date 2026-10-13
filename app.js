@@ -813,7 +813,7 @@ function onMyWayHTML(s, j) {
 function mineHTML(s) {
   const ds = drinksOf(s.id), js = joinsOf(s.id);
   const coming = js.filter(j => j.kind === "coming").map(j => j.member_id), cheers = js.filter(j => j.kind === "cheers").map(j => j.member_id);
-  return `<div class="pm-head"><span class="live-dot"></span><b>Du bist unterwegs</b></div>
+  return `<div class="pm-head"><span class="live-dot"></span><b>Deine Runde läuft</b></div>
     <p class="count">seit ${fmtTime(s.started_at)} · sichtbar bis ${fmtTime(s.ends_at)}${s.place ? " · " + esc(s.place) : ""}</p>
     <div class="pm-count"><b>${ds.length}</b><span>${ds.length === 1 ? "Getränk" : "Getränke"}${ds.length ? `<small>${esc(drinkSummary(ds))}</small>` : ""}</span></div>
     <span class="label">Noch eins? Antippen zählt mit.</span>
