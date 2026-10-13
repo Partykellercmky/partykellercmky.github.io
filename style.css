@@ -342,3 +342,4 @@ nav .prost-tab .badge{background:var(--teal)}
 .rest li.mine{border-color:var(--amber)}
 .rest .rn{min-width:0;overflow-wrap:anywhere}
 .wall-sum{margin:10px 0 0}
+.prost-map .leaflet-tile-pane{filter:invert(1) hue-rotate(185deg) brightness(.8) contrast(.95) saturate(.55)}

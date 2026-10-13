@@ -878,8 +878,9 @@ async function renderProstMap() {
   try { await loadLeaflet(); } catch { el.hidden = true; return; }
   if (!pMap) {
     pMap = L.map(el, { zoomControl: false, scrollWheelZoom: false });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 19, subdomains: "abcd", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    // OpenStreetMap braucht keinen Schluessel; dunkel wird die Karte per CSS-Filter
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
     }).addTo(pMap);
     pLayer = L.layerGroup().addTo(pMap);
   }
