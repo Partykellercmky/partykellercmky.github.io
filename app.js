@@ -812,6 +812,9 @@ const DRINKS = {
   sekt: { e: "🥂", l: "Sekt" }, longdrink: { e: "🍹", l: "Longdrink" }, cocktail: { e: "🍸", l: "Cocktail" },
   shot: { e: "🥃", l: "Shot" }, alkfrei: { e: "🧃", l: "Alkoholfrei" }, wasser: { e: "💧", l: "Wasser" }
 };
+// Zur Auswahl stehen nur diese. Alte Einträge (Radler, Alkoholfrei, Wasser) werden weiter angezeigt.
+const HIDDEN_DRINKS = new Set(["radler", "alkfrei", "wasser"]);
+const PICK_DRINKS = () => Object.entries(DRINKS).filter(([k]) => !HIDDEN_DRINKS.has(k));
 let prostHours = +(store.get("pk-prost-hours") || 3);
 let prostPeriod = store.get("pk-prost-period") || "month";
 const P = () => S.prost || { sessions: [], drinks: [], joins: [] };
@@ -903,7 +906,7 @@ function mineHTML(s) {
     <p class="count">seit ${fmtTime(s.started_at)} · sichtbar bis ${fmtTime(s.ends_at)}${s.place ? " · " + esc(s.place) : ""}</p>
     <div class="pm-count"><b>${ds.length}</b><span>${ds.length === 1 ? "Getränk" : "Getränke"}${ds.length ? `<small>${esc(drinkSummary(ds))}</small>` : ""}</span></div>
     <span class="label">Noch eins? Antippen zählt mit.</span>
-    <div class="drink-quick">${Object.entries(DRINKS).map(([k, d]) => `<button type="button" class="drink-b" data-drink="${k}" aria-label="${d.l} zählen"><span>${d.e}</span>${d.l}</button>`).join("")}</div>
+    <div class="drink-quick">${PICK_DRINKS().map(([k, d]) => `<button type="button" class="drink-b" data-drink="${k}" aria-label="${d.l} zählen"><span>${d.e}</span>${d.l}</button>`).join("")}</div>
     ${coming.length ? `<div class="pm-who"><b>Kommen vorbei:</b>${js.filter(j => j.kind === "coming").map(comerLine).join("")}</div>` : ""}
     ${cheers.length ? `<p class="pm-who"><b>Prost von:</b> ${esc(listNames(cheers))}</p>` : ""}
     <div class="pm-acts">
@@ -1049,8 +1052,8 @@ function renderWallDrinks() {
 /* Prost rufen */
 function renderHours() { $$("#prost-hours [data-hours]").forEach(b => b.classList.toggle("on", +b.dataset.hours === prostHours)); }
 function openProstSheet() {
-  const last = store.get("pk-prost-kind") || "bier";
-  $("#prost-kinds").innerHTML = Object.entries(DRINKS).map(([k, d]) => `<label class="drink"><input type="radio" name="prost-kind" value="${k}"${k === last ? " checked" : ""}><span class="d-in"><span class="e">${d.e}</span>${d.l}</span></label>`).join("");
+  let last = store.get("pk-prost-kind") || "bier"; if (HIDDEN_DRINKS.has(last) || !DRINKS[last]) last = "bier";
+  $("#prost-kinds").innerHTML = PICK_DRINKS().map(([k, d]) => `<label class="drink"><input type="radio" name="prost-kind" value="${k}"${k === last ? " checked" : ""}><span class="d-in"><span class="e">${d.e}</span>${d.l}</span></label>`).join("");
   $("#prost-place").value = store.get("pk-prost-place") || "";
   $("#prost-geo").checked = store.get("pk-prost-geo") === "1";
   $("#prost-notify").checked = true;
