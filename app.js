@@ -777,12 +777,21 @@ async function loadProst() {
   S.prost = S.prostReady ? { sessions: ss.data, drinks: ds.data || [], joins: js.data || [] } : { sessions: [], drinks: [], joins: [] };
 }
 
+/* Zahl am Prost-Reiter: nur Runden, die man noch nicht gesehen hat */
+const prostSeen = () => +(store.get("pk-prost-seen") || 0);
+function updateProstBadge() {
+  const live = liveOthers();
+  if (prostVisible() && live.length) store.set("pk-prost-seen", String(Math.max(prostSeen(), ...live.map(s => s.id))));
+  const n = live.filter(s => s.id > prostSeen()).length;
+  const badge = $("#prost-badge"); badge.hidden = !n; badge.textContent = n;
+}
+
 /* Anzeige */
 function renderProst() {
   if (!me || !S.prost) return;
   $("#prost-setup").hidden = S.prostReady; $("#prost-body").hidden = !S.prostReady;
   const live = liveOthers();
-  const badge = $("#prost-badge"); badge.hidden = !live.length; badge.textContent = live.length;
+  updateProstBadge();
   if (!S.prostReady) return;
   const mine = mySession();
   $("#prost-off").hidden = !!mine;
@@ -1232,7 +1241,7 @@ function showView(name) {
   currentView = name;
   store.set("pk-tab", name);
   updateHeader();
-  if (name === "prost") renderProstMap();
+  if (name === "prost") { renderProstMap(); updateProstBadge(); }
   if (name === "start" && me) renderStart();
   if (name === "neues" && me) markNewsRead();
   if (name === "chat") { renderChat.done = false; if (S.messages) renderChat(); renderStatus(); }
