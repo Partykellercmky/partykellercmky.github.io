@@ -124,6 +124,12 @@ async function load(myId = me?.id) {
   await loadProst();
   await loadNews();
   await loadSongs();
+  await loadPhotos();
+}
+async function loadPhotos() {
+  const { data, error } = await db.from("event_photos").select("*").order("id");
+  // Tabelle gibt es erst nach fotos.sql
+  S.photosReady = !error; S.photos = data || [];
 }
 async function loadSongs() {
   const [s, v] = await Promise.all([db.from("event_songs").select("*"), db.from("song_votes").select("*")]);
@@ -173,6 +179,7 @@ function renderEvents() {
     const f = document.querySelector(`[data-plform="${id}"]`); if (!f) return;
     f.link.value = link; f.title.value = title; if (focus) f[focus].focus();
   });
+  if (S.photosReady) openPhotos.forEach(id => loadThumbs(id));
 }
 function eventHTML(e) {
   const d = new Date(e.day + "T12:00");
@@ -190,6 +197,7 @@ function eventHTML(e) {
     <div class="guests"><span class="glabel">${yes.length} ${yes.length === 1 ? "kommt" : "kommen"}</span>${yes.length ? pills(yes, "") : `<span class="count">Noch keine Zusagen</span>`}</div>
     ${no.length ? `<div class="guests"><span class="glabel">${no.length} ${no.length === 1 ? "kann" : "können"} nicht</span>${pills(no, " off")}</div>` : ""}
     ${S.songsReady ? playlistHTML(e) : ""}
+    ${S.photosReady ? photosHTML(e) : ""}
     <div class="foot"><span class="count">${open > 0 ? `${open} haben sich noch nicht gemeldet` : "Alle haben sich gemeldet"}</span>${delBtn("event", e.id, e.created_by)}</div>
   </div></article>`;
 }
@@ -221,6 +229,151 @@ function playlistHTML(e) {
     </form>`;
   return `<div class="pl">${head}${form}${list}</div>`;
 }
+/* ---------- Fotos pro Termin ---------- */
+const openPhotos = new Set();
+const urlCache = {};   // Pfad -> { url, until }
+const photosOf = id => S.photos.filter(p => p.event_id === id);
+function photosHTML(e) {
+  const list = photosOf(e.id), isOpen = openPhotos.has(e.id);
+  const head = `<button class="pl-toggle${isOpen ? " on" : ""}" type="button" data-ph="${e.id}" aria-expanded="${isOpen}">
+    <span>Fotos</span><span class="count">${list.length} ${list.length === 1 ? "Foto" : "Fotos"}</span></button>`;
+  if (!isOpen) return `<div class="pl">${head}</div>`;
+  const grid = list.length ? `<div class="ph-grid">${list.map(p => {
+    const u = urlCache[p.thumb]?.url;
+    return `<button type="button" class="ph" data-photo="${p.id}" aria-label="Foto von ${esc(nameOf(p.added_by))} ansehen">${u ? `<img src="${esc(u)}" alt="" loading="lazy">` : ""}</button>`; }).join("")}</div>`
+    : `<p class="muted pl-empty">Noch keine Fotos. Lad die ersten hoch.</p>`;
+  return `<div class="pl">${head}
+    <label class="btn ghost ph-add">Fotos hochladen<input type="file" accept="image/*" multiple hidden data-phup="${e.id}"></label>
+    ${grid}</div>`;
+}
+async function signUrls(paths) {
+  const now = Date.now(), need = [...new Set(paths)].filter(p => !(urlCache[p]?.until > now));
+  if (!need.length) return true;
+  const { data, error } = await db.storage.from("fotos").createSignedUrls(need, 3600);
+  if (error) { fail(error); return false; }
+  data.forEach(d => { if (d.signedUrl) urlCache[d.path] = { url: d.signedUrl, until: now + 50 * 60000 }; });
+  return true;
+}
+const thumbsBusy = new Set();
+async function loadThumbs(eventId) {
+  const list = photosOf(eventId); if (!list.length || thumbsBusy.has(eventId)) return;
+  if (!list.some(p => !(urlCache[p.thumb]?.until > Date.now()))) return;
+  thumbsBusy.add(eventId);
+  const ok = await signUrls(list.map(p => p.thumb));
+  thumbsBusy.delete(eventId);
+  if (ok) renderEvents();
+}
+function shrink(file, max, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(), src = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(src);
+      c.toBlob(b => b ? resolve(b) : reject(new Error("Bild konnte nicht verkleinert werden")), "image/jpeg", quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(src); reject(new Error("Dieses Bildformat geht leider nicht")); };
+    img.src = src;
+  });
+}
+const rid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+async function uploadPhotos(eventId, files) {
+  files = [...files].filter(f => f.type.startsWith("image/") || /\.(heic|heif|jpe?g|png|webp)$/i.test(f.name));
+  if (!files.length) return;
+  let ok = 0;
+  for (const [i, f] of files.entries()) {
+    toast(`Lade Foto ${i + 1} von ${files.length} hoch …`);
+    try {
+      const [big, small] = await Promise.all([shrink(f, 1600, 0.8), shrink(f, 400, 0.7)]);
+      const id = rid(), path = `${eventId}/${id}.jpg`, thumb = `${eventId}/${id}_t.jpg`;
+      const st = db.storage.from("fotos");
+      let r = await st.upload(path, big, { contentType: "image/jpeg" }); if (r.error) throw r.error;
+      r = await st.upload(thumb, small, { contentType: "image/jpeg" }); if (r.error) { await st.remove([path]); throw r.error; }
+      r = await db.from("event_photos").insert({ event_id: eventId, path, thumb, added_by: me.id });
+      if (r.error) { await st.remove([path, thumb]); throw r.error; }
+      ok++;
+    } catch (err) { fail(err); }
+  }
+  await refresh();
+  loadThumbs(eventId);
+  if (ok) toast(ok === 1 ? "Foto ist drin" : `${ok} Fotos sind drin`);
+}
+document.addEventListener("change", e => {
+  const inp = e.target.closest("[data-phup]"); if (!inp) return;
+  uploadPhotos(+inp.dataset.phup, inp.files); inp.value = "";
+});
+
+/* Foto groß ansehen, speichern, löschen */
+let viewPhoto = null;
+async function openPhoto(id) {
+  const p = S.photos.find(x => x.id === id); if (!p) return;
+  viewPhoto = id;
+  const sh = $("#photo-sheet"), canDel = me && (p.added_by === me.id || me.is_admin);
+  const list = photosOf(p.event_id), i = list.findIndex(x => x.id === id);
+  sh.querySelector(".pv-who").textContent = `von ${p.added_by === me.id ? "dir" : nameOf(p.added_by)} · ${i + 1} von ${list.length}`;
+  sh.querySelector("[data-pv=del]").hidden = !canDel;
+  sh.querySelector("[data-pv=del]").textContent = "Löschen";
+  sh.querySelector("[data-pv=prev]").disabled = i <= 0;
+  sh.querySelector("[data-pv=next]").disabled = i >= list.length - 1;
+  const img = sh.querySelector("img");
+  img.src = urlCache[p.thumb]?.url || "";
+  sh.hidden = false;
+  await signUrls([p.path]);
+  if (viewPhoto === id && urlCache[p.path]) img.src = urlCache[p.path].url;
+}
+function closePhoto() { viewPhoto = null; $("#photo-sheet").hidden = true; }
+async function savePhoto() {
+  const p = S.photos.find(x => x.id === viewPhoto); if (!p) return;
+  try {
+    await signUrls([p.path]);
+    const blob = await (await fetch(urlCache[p.path].url)).blob();
+    const name = `partykeller-${p.id}.jpg`, file = new File([blob], name, { type: "image/jpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); } catch (err) { if (err.name !== "AbortError") throw err; }
+      return;
+    }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast("Foto wird gespeichert");
+  } catch (err) { fail(err); }
+}
+async function deletePhoto(btn) {
+  const p = S.photos.find(x => x.id === viewPhoto); if (!p) return;
+  if (btn.textContent !== "Wirklich löschen?") { btn.textContent = "Wirklich löschen?"; return; }
+  const { error } = await db.storage.from("fotos").remove([p.path, p.thumb]);
+  if (error) return fail(error);
+  closePhoto();
+  run(db.from("event_photos").delete().eq("id", p.id), "Foto gelöscht");
+}
+$("#photo-sheet").addEventListener("click", e => {
+  const b = e.target.closest("[data-pv]");
+  if (!b) { if (e.target.id === "photo-sheet") closePhoto(); return; }
+  const k = b.dataset.pv;
+  if (k === "close") return closePhoto();
+  if (k === "save") return savePhoto();
+  if (k === "del") return deletePhoto(b);
+  const p = S.photos.find(x => x.id === viewPhoto); if (!p) return;
+  const list = photosOf(p.event_id), i = list.findIndex(x => x.id === p.id);
+  const n = list[i + (k === "next" ? 1 : -1)]; if (n) openPhoto(n.id);
+});
+/* Wischen zum naechsten Foto */
+let pvX = null;
+$("#photo-sheet").addEventListener("touchstart", e => { pvX = e.touches[0].clientX; }, { passive: true });
+$("#photo-sheet").addEventListener("touchend", e => {
+  if (pvX === null) return; const dx = e.changedTouches[0].clientX - pvX; pvX = null;
+  if (Math.abs(dx) > 50) $(`#photo-sheet [data-pv=${dx < 0 ? "next" : "prev"}]`).click();
+});
+/* Termin loeschen: vorher die Fotos aus dem Speicher raeumen */
+async function removeEventPhotos(eventId) {
+  if (!S.photosReady) return true;
+  const list = photosOf(eventId); if (!list.length) return true;
+  const { error } = await db.storage.from("fotos").remove(list.flatMap(p => [p.path, p.thumb]));
+  if (error) { fail(error); return false; }
+  return true;
+}
+
 const canDeleteSong = s => me && (s.added_by === me.id || me.is_admin);
 
 function cleanSpotify(raw) {
@@ -1462,6 +1615,8 @@ document.addEventListener("click", async e => {
     $("#poll-opts").insertAdjacentHTML("beforeend", `<input class="poll-opt" id="poll-opt-${n + 1}" maxlength="60" placeholder="Antwort ${n + 1}" aria-label="Antwort ${n + 1}">`);
     return;
   }
+  if (t.dataset.ph) { const id = +t.dataset.ph; if (openPhotos.has(id)) openPhotos.delete(id); else { openPhotos.add(id); loadThumbs(id); } return renderEvents(); }
+  if (t.dataset.photo) return openPhoto(+t.dataset.photo);
   if (t.dataset.pl) { const id = +t.dataset.pl; openLists.has(id) ? openLists.delete(id) : openLists.add(id); return renderEvents(); }
   if (t.dataset.songvote) {
     const song_id = +t.dataset.songvote;
@@ -1489,6 +1644,7 @@ document.addEventListener("click", async e => {
     }
     pendingDelete.delete(key);
     const table = { event: "events", poll: "polls", quote: "quotes", rank: "rankings", msg: "messages", prost: "prost_sessions", news: "news", wish: "wishes", song: "event_songs" }[t.dataset.del];
+    if (t.dataset.del === "event" && !(await removeEventPhotos(+t.dataset.id))) return;
     return run(db.from(table).delete().eq("id", +t.dataset.id), "Gelöscht");
   }
   if (t.dataset.approve) {
