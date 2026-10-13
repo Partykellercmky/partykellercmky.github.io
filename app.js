@@ -938,7 +938,7 @@ async function renderProstMap() {
 }
 
 
-/* Wall of Fame: Trinkerkoenig mit Podest */
+/* Wall of Fame: Koenig am Glas mit Podest */
 const NON_ALC = new Set(["alkfrei", "wasser"]);
 const beerLitres = list => list.reduce((sum, d) => sum + (DRINKS[d.kind]?.ml || 0), 0) / 1000;
 const fmtL = l => l.toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " l Bier";
