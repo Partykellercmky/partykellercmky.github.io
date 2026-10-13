@@ -315,3 +315,30 @@ nav .prost-tab .badge{background:var(--teal)}
 #prost-form h2{margin:0}
 #prost-form .switch-row{min-height:40px}
 #prost-form .seg{margin-bottom:0}
+
+/* Wall of Fame: Trinkerkoenig */
+#wall-period{max-width:360px}
+.podium{display:grid;grid-template-columns:repeat(3,1fr);align-items:end;gap:8px;margin-top:18px}
+.podium.solo{grid-template-columns:minmax(0,180px);justify-content:center}
+.step{display:flex;flex-direction:column;align-items:center;text-align:center;min-width:0}
+.step .av{width:48px;height:48px;font-size:1.1rem;margin-bottom:6px}
+.step.p1 .av{width:60px;height:60px;font-size:1.3rem;background:var(--amber);box-shadow:0 0 18px rgba(242,180,92,.7)}
+.step.p2 .av{background:var(--teal)}
+.step.p3 .av{background:var(--pink)}
+.st-name{overflow-wrap:anywhere;line-height:1.2}
+.step.mine .st-name{color:var(--amber)}
+.st-n{font-size:.8rem;color:var(--muted);margin-bottom:6px}
+.block{width:100%;display:grid;place-items:center;border:1px solid var(--line);border-bottom:0;border-radius:10px 10px 0 0;background:linear-gradient(var(--wood-2),var(--well))}
+.block span{font-family:var(--font-head);font-size:1.6rem}
+.p1 .block{height:120px;border-color:var(--amber);box-shadow:0 0 18px rgba(242,180,92,.25)}
+.p1 .block span{color:var(--amber);text-shadow:0 0 12px var(--amber);font-size:2.2rem}
+.p2 .block{height:88px;border-color:rgba(63,240,224,.5)}
+.p2 .block span{color:var(--teal);text-shadow:0 0 10px var(--teal)}
+.p3 .block{height:64px;border-color:rgba(255,79,163,.5)}
+.p3 .block span{color:var(--pink);text-shadow:0 0 10px var(--pink)}
+.podium+.rest,.podium+.wall-sum{border-top:2px solid var(--line)}
+.rest{list-style:none;margin:0;padding:8px 0 0;display:grid;gap:6px}
+.rest li{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;background:var(--wood-2);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.rest li.mine{border-color:var(--amber)}
+.rest .rn{min-width:0;overflow-wrap:anywhere}
+.wall-sum{margin:10px 0 0}

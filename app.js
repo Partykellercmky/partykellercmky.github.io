@@ -787,6 +787,7 @@ function renderProst() {
     : `<div class="empty">${mine ? "Außer dir ist gerade niemand unterwegs." : "Gerade ist niemand unterwegs. Mach du den Anfang."}</div>`;
   renderProstStats();
   renderProstHistory();
+  renderWallDrinks();
   if (prostVisible()) renderProstMap();
 }
 function mineHTML(s) {
@@ -894,6 +895,34 @@ async function renderProstMap() {
   if (key !== pMapKey) { pMapKey = key; pMap.fitBounds(L.latLngBounds(pts.map(s => [s.lat, s.lng])), { padding: [40, 40], maxZoom: 15 }); }
 }
 
+
+/* Wall of Fame: Trinkerkoenig mit Podest */
+let wallPeriod = store.get("pk-wall-period") || "month";
+function renderWallDrinks() {
+  $("#wall-drinks").hidden = !S.prostReady;
+  if (!S.prostReady) return;
+  $$("#wall-period [data-wperiod]").forEach(b => b.classList.toggle("on", b.dataset.wperiod === wallPeriod));
+  const from = periodStart(wallPeriod).toISOString();
+  const ids = new Set(P().sessions.filter(s => s.started_at >= from).map(s => s.id));
+  const per = {};
+  P().drinks.filter(d => ids.has(d.session_id)).forEach(d => { const p = per[d.member_id] ||= { n: 0, list: [] }; p.n++; p.list.push(d); });
+  const list = Object.entries(per).map(([id, v]) => ({ id: +id, ...v })).sort((a, b) => b.n - a.n);
+  if (!list.length) { $("#wall-podium").innerHTML = `<div class="empty">In diesem Zeitraum hat noch niemand Prost gerufen. Der Thron ist frei.</div>`; return; }
+  // Gleich viele Getraenke = gleicher Platz
+  let place = 0, last = null;
+  list.forEach((r, i) => { if (r.n !== last) { place = i + 1; last = r.n; } r.place = place; });
+  const top = list.slice(0, 3), rest = list.slice(3);
+  const order = [top[1], top[0], top[2]].filter(Boolean);
+  const step = r => `<div class="step p${Math.min(r.place, 3)}${r.id === me.id ? " mine" : ""}">
+      <div class="av">${esc(nameOf(r.id)[0])}</div>
+      <b class="st-name">${esc(nameOf(r.id))}</b>
+      <span class="st-n">${plural(r.n, "Getränk", "Getränke")}</span>
+      <div class="block"><span>${r.place}</span></div></div>`;
+  $("#wall-podium").innerHTML = `<div class="podium${top.length === 1 ? " solo" : ""}">${order.map(step).join("")}</div>
+    ${rest.length ? `<ol class="rest">${rest.map(r => `<li${r.id === me.id ? ' class="mine"' : ""}><span class="pos">${r.place}</span><span class="rn">${esc(nameOf(r.id))}</span><span class="count">${plural(r.n, "Getränk", "Getränke")}</span></li>`).join("")}</ol>` : ""}
+    <p class="count wall-sum">Auf Platz 1 hat ${esc(nameOf(top[0].id))} getrunken: ${esc(drinkSummary(top[0].list))}</p>`;
+}
+
 /* Prost rufen */
 function renderHours() { $$("#prost-hours [data-hours]").forEach(b => b.classList.toggle("on", +b.dataset.hours === prostHours)); }
 function openProstSheet() {
@@ -996,6 +1025,7 @@ document.addEventListener("click", async e => {
   if (a && a.startsWith("prost-")) return prostAction(a);
   if (t.dataset.hours) { prostHours = +t.dataset.hours; store.set("pk-prost-hours", prostHours); return renderHours(); }
   if (t.dataset.period) { prostPeriod = t.dataset.period; store.set("pk-prost-period", prostPeriod); return renderProstStats(); }
+  if (t.dataset.wperiod) { wallPeriod = t.dataset.wperiod; store.set("pk-wall-period", wallPeriod); return renderWallDrinks(); }
   if (t.dataset.drink) return addDrink(t.dataset.drink);
   if (t.dataset.join) return answerProst(+t.dataset.join, t.dataset.k);
   if (a === "hide-install") { store.set("pk-install-hidden", "1"); $("#install-card").hidden = true; return; }

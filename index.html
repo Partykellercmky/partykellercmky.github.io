@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 <div class="wrap">
@@ -205,6 +205,16 @@
     </div>
 
     <div id="view-wall" class="view" hidden>
+      <section id="wall-drinks" hidden>
+        <h2>Trinkerkönig</h2>
+        <p class="lead">Wer hat am meisten getrunken? Gezählt wird alles aus der Prost-Strichliste.</p>
+        <div class="seg" id="wall-period">
+          <button type="button" data-wperiod="week">7 Tage</button>
+          <button type="button" data-wperiod="month">Monat</button>
+          <button type="button" data-wperiod="year">Jahr</button>
+        </div>
+        <div id="wall-podium"></div>
+      </section>
       <section>
         <h2>Zitate-Wand</h2>
         <p class="lead">Was im Keller gesagt wird, bleibt an der Wand.</p>
@@ -264,6 +274,6 @@
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>
