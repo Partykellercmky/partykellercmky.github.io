@@ -155,6 +155,14 @@ Deno.serve(async (req) => {
         url: "./#prost", tag: "prost-join-" + id,
       }));
     }
+    if (type === "news") {
+      const { data: n, error } = await db.from("news").select("title,body,created_by").eq("id", id).maybeSingle();
+      if (error) throw error;
+      if (!n) return Response.json({ skipped: true, grund: "Eintrag " + id + " nicht gefunden" });
+      const subs = await subsFor((x) => x.member_id !== n.created_by);
+      const body = n.body.length > 140 ? n.body.slice(0, 137) + "…" : n.body;
+      return Response.json(await send(subs, { title: "Neu in der App: " + n.title, body: body || "Schau mal rein!", url: "./#neues", tag: "news-" + id }));
+    }
     if (type === "reminder") {
       const tomorrow = berlinDate(1);
       const { data: events } = await db.from("events").select("id,title,info").eq("day", tomorrow);

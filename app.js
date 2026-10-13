@@ -122,6 +122,7 @@ async function load(myId = me?.id) {
     S.requests = data || [];
   }
   await loadProst();
+  await loadNews();
 }
 async function refresh() {
   if (busy || !me) return; busy = true;
@@ -138,7 +139,7 @@ const nameOf = id => S.members.find(m => m.id === id)?.name || "Ehemaliges Mitgl
 const canDelete = createdBy => me && (createdBy === me.id || me.is_admin);
 
 /* ---------- Anzeige ---------- */
-function render() { renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderStart(); }
+function render() { renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderNews(); renderStart(); }
 
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;
@@ -1089,10 +1090,130 @@ function startProstRealtime() {
   prostChannel.subscribe();
 }
 
+/* ---------- Neues: neue Funktionen der App und Wuensche-Ecke ---------- */
+const NREACTS = { up: "👍", fire: "🔥", cheers: "🍻" };
+const WISH_STATUS = { open: "Offen", soon: "Kommt bald", done: "Umgesetzt" };
+let newsSub = "news", newsEditing = null;
+async function loadNews() {
+  const q = t => db.from(t).select("*");
+  const [n, r, rd, w, wv] = await Promise.all([q("news"), q("news_reactions"), q("news_reads"), q("wishes"), q("wish_votes")]);
+  // Tabellen gibt es erst nach neues.sql
+  S.newsReady = !n.error;
+  S.news = n.data || []; S.newsReacts = r.data || []; S.wishes = w.data || []; S.wishVotes = wv.data || [];
+  S.newsRead = Math.max(rd.data?.[0]?.last_id || 0, +(store.get("pk-news-read") || 0));
+}
+const unreadNews = () => (S.news || []).filter(n => n.id > (S.newsRead || 0) && n.created_by !== me?.id).sort((a, b) => b.id - a.id);
+
+function setNewsSub(v) {
+  newsSub = v;
+  $$("[data-nsub]").forEach(b => b.classList.toggle("on", b.dataset.nsub === v));
+  $("#nsub-news").hidden = v !== "news"; $("#nsub-wishes").hidden = v !== "wishes";
+  $("#news-plus").hidden = !(me?.is_admin && v === "news");
+}
+function renderNews() {
+  if (!me || !S.news) return;
+  $("#news-setup").hidden = S.newsReady; $("#news-body").hidden = !S.newsReady;
+  const unread = unreadNews().length;
+  const nb = $("#news-badge"); nb.hidden = !unread; nb.textContent = unread;
+  $("#menu-neues-sub").textContent = unread ? `${unread} ${unread === 1 ? "neue Funktion" : "neue Funktionen"}` : "Neue Funktionen und Wünsche";
+  if (!S.newsReady) return;
+  setNewsSub(newsSub);
+  const list = [...S.news].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
+  $("#news-list").innerHTML = list.length ? list.map(newsHTML).join("") : `<div class="empty">Noch keine Neuigkeiten.</div>`;
+  renderWishes();
+}
+function newsHTML(n) {
+  const rs = S.newsReacts.filter(r => r.news_id === n.id), my = rs.find(r => r.member_id === me.id)?.kind;
+  const steps = n.steps.split("\n").map(x => x.trim()).filter(Boolean);
+  const isNew = n.id > (S.newsRead || 0) || n.id > (renderNews.seenBefore ?? Infinity);
+  return `<article class="news${isNew ? " unread" : ""}">
+    <div class="news-head"><span class="news-date">${fmtDate(n.created_at)}</span>${isNew ? `<span class="news-new">Neu</span>` : ""}</div>
+    <h3>${esc(n.title)}</h3>
+    ${n.body ? `<p>${esc(n.body)}</p>` : ""}
+    ${steps.length ? `<ol class="news-steps">${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
+    <div class="news-reacts">${Object.entries(NREACTS).map(([k, e]) => { const c = rs.filter(r => r.kind === k).length;
+      return `<button type="button" class="nr${my === k ? " on" : ""}" data-nreact="${n.id}" data-k="${k}" aria-label="Reaktion ${k}">${e}${c ? `<small>${c}</small>` : ""}</button>`; }).join("")}</div>
+    ${me.is_admin ? `<div class="foot news-admin"><button class="link" type="button" data-nedit="${n.id}">Bearbeiten</button><button class="link" type="button" data-npush="${n.id}">Per Push senden</button>${delBtn("news", n.id, -1)}</div>` : ""}
+  </article>`;
+}
+function renderWishes() {
+  const votes = id => S.wishVotes.filter(v => v.wish_id === id);
+  const order = { soon: 0, open: 1, done: 2 };
+  S.wishes.forEach(w => { if (!WISH_STATUS[w.status]) w.status = "open"; });
+  const list = [...S.wishes].sort((a, b) => order[a.status] - order[b.status] || votes(b.id).length - votes(a.id).length || b.id - a.id);
+  $("#wish-list").innerHTML = list.length ? list.map(w => {
+    const vs = votes(w.id), mine = vs.some(v => v.member_id === me.id);
+    return `<div class="wish ${w.status}">
+      <button type="button" class="wvote${mine ? " on" : ""}" data-wvote="${w.id}" aria-label="Dafür stimmen"><span>👍</span><b>${vs.length}</b></button>
+      <div class="wish-txt"><p>${esc(w.text)}</p>
+        <span class="count">${esc(nameOf(w.created_by))}${w.status !== "open" ? ` · <span class="wstat ${w.status}">${WISH_STATUS[w.status]}</span>` : ""}</span>
+        ${me.is_admin ? `<div class="wish-admin">${Object.entries(WISH_STATUS).filter(([k]) => k !== w.status).map(([k, l]) => `<button class="link" type="button" data-wstatus="${w.id}" data-s="${k}">${l}</button>`).join("")}${delBtn("wish", w.id, w.created_by)}</div>`
+          : w.created_by === me.id ? `<div class="wish-admin">${delBtn("wish", w.id, w.created_by)}</div>` : ""}
+      </div></div>`;
+  }).join("") : `<div class="empty">Noch keine Wünsche. Was fehlt dir in der App?</div>`;
+}
+/* Gelesen melden, wenn die Seite offen ist */
+async function markNewsRead() {
+  if (!S.newsReady || !S.news?.length) return;
+  const top = Math.max(...S.news.map(n => n.id));
+  if (top <= (S.newsRead || 0)) return;
+  renderNews.seenBefore = S.newsRead || 0;   // "Neu" bleibt sichtbar, solange man auf der Seite ist
+  S.newsRead = top; store.set("pk-news-read", String(top));
+  db.rpc("mark_news_read", { p_id: top }).then(({ error }) => { if (error) console.warn(error); });
+  renderNews(); renderStart();
+}
+
+/* Admin: schreiben und bearbeiten */
+function openNewsSheet(n) {
+  newsEditing = n?.id || null;
+  $("#news-form-title").textContent = n ? "Neuigkeit bearbeiten" : "Neuigkeit schreiben";
+  $("#news-title").value = n?.title || ""; $("#news-text").value = n?.body || ""; $("#news-steps").value = n?.steps || "";
+  $("#news-push").checked = false; $("#news-push-row").hidden = !!n;
+  $("#news-go").textContent = n ? "Speichern" : "Veröffentlichen";
+  $("#news-sheet").hidden = false;
+}
+const closeNewsSheet = () => $("#news-sheet").hidden = true;
+$("#news-sheet").addEventListener("click", e => { if (e.target.id === "news-sheet") closeNewsSheet(); });
+$("#news-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const row = { title: $("#news-title").value.trim(), body: $("#news-text").value.trim(), steps: $("#news-steps").value.trim() };
+  const ok = newsEditing
+    ? await run(db.from("news").update(row).eq("id", newsEditing), "Gespeichert")
+    : await run(db.from("news").insert({ ...row, push: $("#news-push").checked, created_by: me.id }), $("#news-push").checked ? "Veröffentlicht und an alle geschickt" : "Veröffentlicht");
+  if (ok) closeNewsSheet();
+});
+$("#wish-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const ok = await run(db.from("wishes").insert({ text: $("#wish-text").value.trim(), created_by: me.id }), "Danke für die Idee!");
+  if (ok) $("#wish-text").value = "";
+});
+let pendingPush = null;
+async function newsAction(t) {
+  if (t.dataset.nsub) return setNewsSub(t.dataset.nsub);
+  if (t.dataset.action === "news-new") return openNewsSheet(null);
+  if (t.dataset.action === "news-close") return closeNewsSheet();
+  if (t.dataset.nedit) return openNewsSheet(S.news.find(n => n.id === +t.dataset.nedit));
+  if (t.dataset.npush) {
+    if (pendingPush !== t.dataset.npush) { pendingPush = t.dataset.npush; t.textContent = "Wirklich an alle?"; setTimeout(() => { pendingPush = null; if (t.isConnected) t.textContent = "Per Push senden"; }, 4000); return; }
+    pendingPush = null;
+    return run(db.rpc("push_news", { p_id: +t.dataset.npush }), "An alle geschickt");
+  }
+  if (t.dataset.nreact) {
+    const news_id = +t.dataset.nreact, kind = t.dataset.k, cur = S.newsReacts.find(r => r.news_id === news_id && r.member_id === me.id);
+    if (cur?.kind === kind) return run(db.from("news_reactions").delete().match({ news_id, member_id: me.id }));
+    return run(db.from("news_reactions").upsert({ news_id, member_id: me.id, kind }));
+  }
+  if (t.dataset.wvote) {
+    const wish_id = +t.dataset.wvote, mine = S.wishVotes.some(v => v.wish_id === wish_id && v.member_id === me.id);
+    return mine ? run(db.from("wish_votes").delete().match({ wish_id, member_id: me.id })) : run(db.from("wish_votes").insert({ wish_id, member_id: me.id }), "Stimme gezählt");
+  }
+  if (t.dataset.wstatus) return run(db.from("wishes").update({ status: t.dataset.s }).eq("id", +t.dataset.wstatus), "Status geändert");
+}
+
 /* ---------- Navigation: Start, Termine, Prost, Chat, Mehr ---------- */
-const VIEWS = ["start", "termine", "prost", "chat", "mehr", "gruppe", "wall", "einstellungen", "admin"];
-const UNDER_MORE = { gruppe: 1, wall: 1, einstellungen: 1, admin: 1 };
-const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", gruppe: "Gruppe", wall: "Wall of Fame", einstellungen: "Einstellungen", admin: "Admin" };
+const VIEWS = ["start", "termine", "prost", "chat", "mehr", "neues", "gruppe", "wall", "einstellungen", "admin"];
+const UNDER_MORE = { neues: 1, gruppe: 1, wall: 1, einstellungen: 1, admin: 1 };
+const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", neues: "Neues", gruppe: "Gruppe", wall: "Wall of Fame", einstellungen: "Einstellungen", admin: "Admin" };
 let currentView = "start";
 function updateHeader() {
   const inApp = !$("#screen-app").hidden;
@@ -1113,6 +1234,7 @@ function showView(name) {
   updateHeader();
   if (name === "prost") renderProstMap();
   if (name === "start" && me) renderStart();
+  if (name === "neues" && me) markNewsRead();
   if (name === "chat") { renderChat.done = false; if (S.messages) renderChat(); renderStatus(); }
   else { window.scrollTo({ top: 0 }); closeSheet(); setTyping(false); }
   updateChatBadge();
@@ -1159,6 +1281,13 @@ function renderStart() {
   const hour = new Date().getHours();
   const hello = hour < 11 ? "Moin" : hour < 18 ? "Hey" : "Guten Abend";
   let html = `<p class="hello">${hello}, <b>${esc(me.name)}</b></p>`;
+
+  // Neu in der App (solange ungelesen)
+  const fresh = S.newsReady ? unreadNews() : [];
+  if (fresh.length) {
+    const n = fresh[0];
+    html += startBlock("Neu in der App", "neues", `<button type="button" class="s-news" data-tab="neues"><b>${esc(n.title)}</b>${n.body ? `<span>${esc(n.body.slice(0, 110))}${n.body.length > 110 ? " …" : ""}</span>` : ""}${fresh.length > 1 ? `<small>und ${fresh.length - 1} ${fresh.length === 2 ? "weitere Neuigkeit" : "weitere Neuigkeiten"}</small>` : ""}</button>`, "s-newsblock");
+  }
 
   // Naechstes Treffen
   const next = [...S.events].filter(e => e.day >= today()).sort((a, b) => a.day.localeCompare(b.day))[0];
@@ -1222,6 +1351,7 @@ document.addEventListener("click", async e => {
   }
   const a = t.dataset.action;
   if (t.dataset.tsub) return setTermSub(t.dataset.tsub);
+  if (t.dataset.nsub || t.dataset.nedit || t.dataset.npush || t.dataset.nreact || t.dataset.wvote || t.dataset.wstatus || a === "news-new" || a === "news-close") return newsAction(t);
   if (t.dataset.wsub) return setWallSub(t.dataset.wsub);
   if (t.dataset.newkind) return setNewKind(t.dataset.newkind);
   if (a === "new-open") return openNew();
@@ -1263,7 +1393,7 @@ document.addEventListener("click", async e => {
       return;
     }
     pendingDelete.delete(key);
-    const table = { event: "events", poll: "polls", quote: "quotes", rank: "rankings", msg: "messages", prost: "prost_sessions" }[t.dataset.del];
+    const table = { event: "events", poll: "polls", quote: "quotes", rank: "rankings", msg: "messages", prost: "prost_sessions", news: "news", wish: "wishes" }[t.dataset.del];
     return run(db.from(table).delete().eq("id", +t.dataset.id), "Gelöscht");
   }
   if (t.dataset.approve) {
