@@ -123,6 +123,13 @@ async function load(myId = me?.id) {
   }
   await loadProst();
   await loadNews();
+  await loadSongs();
+}
+async function loadSongs() {
+  const [s, v] = await Promise.all([db.from("event_songs").select("*"), db.from("song_votes").select("*")]);
+  // Tabellen gibt es erst nach playlist.sql
+  S.songsReady = !s.error;
+  S.songs = s.data || []; S.songVotes = v.data || [];
 }
 async function refresh() {
   if (busy || !me) return; busy = true;
@@ -153,6 +160,8 @@ function renderMembers() {
 }
 
 function renderEvents() {
+  // Eingetippte Songs beim Neuzeichnen nicht verlieren
+  const keep = $$("[data-plform]").map(f => [f.dataset.plform, f.link.value, f.title.value, f.contains(document.activeElement) ? document.activeElement.name : null]);
   const t = today();
   const sorted = [...S.events].sort((a, b) => a.day.localeCompare(b.day));
   const upcoming = sorted.filter(e => e.day >= t), past = sorted.filter(e => e.day < t).reverse().slice(0, 10);
@@ -160,6 +169,10 @@ function renderEvents() {
   $("#past-wrap").hidden = !past.length;
   $("#past-label").textContent = `Vergangene Treffen (${past.length})`;
   $("#events-past").innerHTML = past.map(eventHTML).join("");
+  keep.forEach(([id, link, title, focus]) => {
+    const f = document.querySelector(`[data-plform="${id}"]`); if (!f) return;
+    f.link.value = link; f.title.value = title; if (focus) f[focus].focus();
+  });
 }
 function eventHTML(e) {
   const d = new Date(e.day + "T12:00");
@@ -176,9 +189,73 @@ function eventHTML(e) {
     </div>
     <div class="guests"><span class="glabel">${yes.length} ${yes.length === 1 ? "kommt" : "kommen"}</span>${yes.length ? pills(yes, "") : `<span class="count">Noch keine Zusagen</span>`}</div>
     ${no.length ? `<div class="guests"><span class="glabel">${no.length} ${no.length === 1 ? "kann" : "können"} nicht</span>${pills(no, " off")}</div>` : ""}
+    ${S.songsReady ? playlistHTML(e) : ""}
     <div class="foot"><span class="count">${open > 0 ? `${open} haben sich noch nicht gemeldet` : "Alle haben sich gemeldet"}</span>${delBtn("event", e.id, e.created_by)}</div>
   </div></article>`;
 }
+
+/* ---------- Playlist pro Termin ---------- */
+const openLists = new Set();
+const songVotes = id => S.songVotes.filter(v => v.song_id === id);
+function playlistHTML(e) {
+  const songs = S.songs.filter(s => s.event_id === e.id)
+    .sort((a, b) => (songVotes(b.id).length - songVotes(a.id).length) || a.id - b.id);
+  const isOpen = openLists.has(e.id), past = e.day < today();
+  const head = `<button class="pl-toggle${isOpen ? " on" : ""}" type="button" data-pl="${e.id}" aria-expanded="${isOpen}">
+    <span>Playlist</span><span class="count">${songs.length} ${songs.length === 1 ? "Song" : "Songs"}</span></button>`;
+  if (!isOpen) return `<div class="pl">${head}</div>`;
+  const list = songs.length ? `<ol class="pl-list">${songs.map((s, i) => {
+    const votes = songVotes(s.id), mine = votes.some(v => v.member_id === me.id);
+    const link = s.url || `https://open.spotify.com/search/${encodeURIComponent(s.title)}`;
+    return `<li class="song">
+      <span class="pl-nr">${i + 1}</span>
+      ${s.cover ? `<img class="pl-cover" src="${esc(s.cover)}" alt="" loading="lazy">` : `<span class="pl-cover none" aria-hidden="true">&#9835;</span>`}
+      <div class="pl-txt"><strong>${esc(s.title)}</strong><small>von ${s.added_by === me.id ? "dir" : esc(nameOf(s.added_by))}</small>
+        <div class="pl-links"><a href="${esc(link)}" target="_blank" rel="noopener">${s.url ? "In Spotify öffnen" : "In Spotify suchen"}</a>${s.url ? `<a href="https://song.link/${esc(s.url)}" target="_blank" rel="noopener">Andere Apps</a>` : ""}${canDeleteSong(s) ? `<button class="link danger" data-del="song" data-id="${s.id}">Löschen</button>` : ""}</div></div>
+      <button class="pl-vote${mine ? " on" : ""}" type="button" data-songvote="${s.id}" aria-pressed="${mine}" aria-label="Hochvoten"><span>&#9650;</span><b>${votes.length}</b></button>
+    </li>`; }).join("")}</ol>` : `<p class="muted pl-empty">Noch keine Songs. Reich den ersten ein.</p>`;
+  const form = past ? "" : `<form class="pl-form" data-plform="${e.id}">
+      <input name="link" inputmode="url" maxlength="300" placeholder="Spotify-Link (einfügen)" aria-label="Spotify-Link">
+      <input name="title" maxlength="120" placeholder="oder Titel – Künstler" aria-label="Titel und Künstler">
+      <button class="btn" type="submit">Song einreichen</button>
+    </form>`;
+  return `<div class="pl">${head}${form}${list}</div>`;
+}
+const canDeleteSong = s => me && (s.added_by === me.id || me.is_admin);
+
+function cleanSpotify(raw) {
+  try {
+    const u = new URL(raw.trim());
+    if (!/(^|\.)spotify\.(com|link)$/.test(u.hostname)) return null;
+    u.search = ""; u.hash = "";
+    return u.href.replace(/\/intl-[a-z]+\//, "/");
+  } catch { return null; }
+}
+async function spotifyInfo(url) {
+  try {
+    const r = await fetch("https://open.spotify.com/oembed?url=" + encodeURIComponent(url));
+    if (!r.ok) return null;
+    const j = await r.json();
+    return { title: j.title || "", cover: j.thumbnail_url || "" };
+  } catch { return null; }
+}
+document.addEventListener("submit", async e => {
+  const f = e.target.closest("[data-plform]"); if (!f) return;
+  e.preventDefault();
+  const event_id = +f.dataset.plform, rawLink = f.link.value.trim(), typed = f.title.value.trim();
+  let url = "", cover = "", title = typed;
+  if (rawLink) {
+    url = cleanSpotify(rawLink);
+    if (!url) return toast("Das ist kein Spotify-Link. Trag den Song sonst als Titel ein.", true);
+    const btn = f.querySelector("button"); btn.disabled = true; btn.textContent = "Moment …";
+    const info = await spotifyInfo(url);
+    btn.disabled = false; btn.textContent = "Song einreichen";
+    if (info) { cover = info.cover; if (!title) title = info.title; }
+  }
+  if (!title) return toast("Den Songnamen konnte ich nicht lesen. Schreib noch Titel und Künstler dazu.", true);
+  const ok = await run(db.from("event_songs").insert({ event_id, title: title.slice(0, 120), url, cover, added_by: me.id }), "Song ist drin");
+  if (ok) { const nf = document.querySelector(`[data-plform="${event_id}"]`); if (nf) nf.reset(); }
+});
 function delBtn(kind, id, createdBy) {
   return canDelete(createdBy) ? `<button class="link danger" data-del="${kind}" data-id="${id}">Löschen</button>` : "";
 }
@@ -1382,6 +1459,12 @@ document.addEventListener("click", async e => {
     $("#poll-opts").insertAdjacentHTML("beforeend", `<input class="poll-opt" id="poll-opt-${n + 1}" maxlength="60" placeholder="Antwort ${n + 1}" aria-label="Antwort ${n + 1}">`);
     return;
   }
+  if (t.dataset.pl) { const id = +t.dataset.pl; openLists.has(id) ? openLists.delete(id) : openLists.add(id); return renderEvents(); }
+  if (t.dataset.songvote) {
+    const song_id = +t.dataset.songvote;
+    if (S.songVotes.some(v => v.song_id === song_id && v.member_id === me.id)) return run(db.from("song_votes").delete().match({ song_id, member_id: me.id }));
+    return run(db.from("song_votes").insert({ song_id, member_id: me.id }));
+  }
   if (t.dataset.rsvp) {
     const event_id = +t.dataset.rsvp, status = t.dataset.s;
     const cur = S.rsvps.find(r => r.event_id === event_id && r.member_id === me.id);
@@ -1402,7 +1485,7 @@ document.addEventListener("click", async e => {
       return;
     }
     pendingDelete.delete(key);
-    const table = { event: "events", poll: "polls", quote: "quotes", rank: "rankings", msg: "messages", prost: "prost_sessions", news: "news", wish: "wishes" }[t.dataset.del];
+    const table = { event: "events", poll: "polls", quote: "quotes", rank: "rankings", msg: "messages", prost: "prost_sessions", news: "news", wish: "wishes", song: "event_songs" }[t.dataset.del];
     return run(db.from(table).delete().eq("id", +t.dataset.id), "Gelöscht");
   }
   if (t.dataset.approve) {

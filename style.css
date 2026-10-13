@@ -482,3 +482,25 @@ textarea:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 .s-news b{font-family:var(--font-head);font-weight:400;font-size:1.05rem;color:var(--amber)}
 .s-news span{color:var(--cream);font-size:.92rem}
 .s-news small{color:var(--muted)}
+
+/* Playlist pro Termin */
+.pl{margin:12px 0 4px;border-top:1px solid var(--line);padding-top:8px}
+.pl-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;font:inherit;min-height:44px;background:none;border:0;color:var(--teal);font-family:var(--font-head);font-size:.8rem;letter-spacing:.06em;cursor:pointer;padding:0}
+.pl-toggle span:first-child::after{content:" +";color:var(--muted)}
+.pl-toggle.on span:first-child::after{content:" −"}
+.pl-form{display:grid;gap:8px;margin:6px 0 10px}
+.pl-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.song{display:grid;grid-template-columns:18px 44px 1fr auto;gap:10px;align-items:center;background:var(--well);border:1px solid var(--line);border-radius:8px;padding:8px}
+.pl-nr{color:var(--muted);font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums}
+.pl-cover{width:44px;height:44px;border-radius:4px;object-fit:cover;display:grid;place-items:center;background:var(--wood-2);color:var(--amber);font-size:1.2rem}
+.pl-txt{min-width:0}
+.pl-txt strong{display:block;font-size:.92rem;line-height:1.3;overflow-wrap:anywhere}
+.pl-txt small{color:var(--muted);font-size:.78rem}
+.pl-links{display:flex;flex-wrap:wrap;gap:0 12px;align-items:center}
+.pl-links a{color:var(--amber);font-size:.8rem;padding:6px 0}
+.pl-links .link{font-size:.8rem;padding:6px 0;min-height:0}
+.pl-vote{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:44px;min-height:48px;font:inherit;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--muted);cursor:pointer;line-height:1.1}
+.pl-vote span{font-size:.7rem}
+.pl-vote b{font-variant-numeric:tabular-nums;font-size:.9rem}
+.pl-vote.on{border-color:var(--pink);color:var(--pink);box-shadow:0 0 10px rgba(255,79,163,.3)}
+.pl-empty{font-size:.9rem;margin:4px 0}
