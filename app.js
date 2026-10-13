@@ -242,8 +242,10 @@ function photosHTML(e) {
     const u = urlCache[p.thumb]?.url;
     return `<button type="button" class="ph" data-photo="${p.id}" aria-label="Foto von ${esc(nameOf(p.added_by))} ansehen">${u ? `<img src="${esc(u)}" alt="" loading="lazy">` : ""}</button>`; }).join("")}</div>`
     : `<p class="muted pl-empty">Noch keine Fotos. Lad die ersten hoch.</p>`;
+  const ready = saveAll.event === e.id && saveAll.files;
+  const allBtn = list.length > 1 ? `<button type="button" class="btn${ready ? "" : " ghost"}" data-phall="${e.id}"${saveAll.event === e.id && !ready ? " disabled" : ""}>${ready ? `Jetzt ${saveAll.files.length} Fotos sichern` : saveAll.event === e.id ? "Fotos werden geladen …" : "Alle speichern"}</button>` : "";
   return `<div class="pl">${head}
-    <label class="btn ghost ph-add">Fotos hochladen<input type="file" accept="image/*" multiple hidden data-phup="${e.id}"></label>
+    <div class="ph-acts"><label class="btn ghost ph-add">Fotos hochladen<input type="file" accept="image/*" multiple hidden data-phup="${e.id}"></label>${allBtn}</div>
     ${grid}</div>`;
 }
 async function signUrls(paths) {
@@ -339,6 +341,40 @@ async function savePhoto() {
     toast("Foto wird gespeichert");
   } catch (err) { fail(err); }
 }
+/* Alle Fotos eines Termins sichern.
+   Schritt 1: Fotos laden. Schritt 2: erneut tippen, dann oeffnet sich das Teilen-Menue
+   (das Handy erlaubt das Teilen nur direkt nach einem Tippen). */
+let saveAll = { event: null, files: null };
+async function prepareSaveAll(eventId) {
+  const list = photosOf(eventId); if (!list.length) return;
+  saveAll = { event: eventId, files: null }; renderEvents();
+  try {
+    if (!(await signUrls(list.map(p => p.path)))) throw new Error("Fotos konnten nicht geladen werden");
+    const files = await Promise.all(list.map(async (p, i) => {
+      const blob = await (await fetch(urlCache[p.path].url)).blob();
+      return new File([blob], `partykeller-${eventId}-${String(i + 1).padStart(2, "0")}.jpg`, { type: "image/jpeg" });
+    }));
+    if (saveAll.event !== eventId) return;
+    saveAll.files = files;
+  } catch (err) { saveAll = { event: null, files: null }; fail(err); }
+  renderEvents();
+}
+async function doSaveAll() {
+  const files = saveAll.files; if (!files) return;
+  if (navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files }); }
+    catch (err) { if (err.name !== "AbortError") { fail(err); return; } }
+  } else {
+    for (const f of files) {
+      const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      await new Promise(r => setTimeout(r, 400));
+    }
+    toast(`${files.length} Fotos werden gespeichert`);
+  }
+  saveAll = { event: null, files: null }; renderEvents();
+}
+
 async function deletePhoto(btn) {
   const p = S.photos.find(x => x.id === viewPhoto); if (!p) return;
   if (btn.textContent !== "Wirklich löschen?") { btn.textContent = "Wirklich löschen?"; return; }
@@ -1617,6 +1653,7 @@ document.addEventListener("click", async e => {
   }
   if (t.dataset.ph) { const id = +t.dataset.ph; if (openPhotos.has(id)) openPhotos.delete(id); else { openPhotos.add(id); loadThumbs(id); } return renderEvents(); }
   if (t.dataset.photo) return openPhoto(+t.dataset.photo);
+  if (t.dataset.phall) { const id = +t.dataset.phall; return saveAll.event === id && saveAll.files ? doSaveAll() : prepareSaveAll(id); }
   if (t.dataset.pl) { const id = +t.dataset.pl; openLists.has(id) ? openLists.delete(id) : openLists.add(id); return renderEvents(); }
   if (t.dataset.songvote) {
     const song_id = +t.dataset.songvote;
