@@ -80,11 +80,17 @@ Deno.serve(async (req) => {
       return Response.json(await send(subs, { title: "Neue Beitrittsanfrage", body: (r?.name || "Jemand") + " möchte in den Partykeller.", url: "./#admin", tag: "request-" + id }));
     }
     if (type === "chat") {
-      const { data: m, error } = await db.from("messages").select("text,member_id,reply_to,mentions,mention_all").eq("id", id).maybeSingle();
+      const { data: m, error } = await db.from("messages").select("*").eq("id", id).maybeSingle();
       if (error) throw error;
       if (!m) return Response.json({ skipped: true, grund: "Nachricht " + id + " nicht gefunden" });
       const { data: who } = await db.from("members").select("name").eq("id", m.member_id).maybeSingle();
       const name = who?.name || "Jemand";
+      // Gefluestert: nur der Empfaenger bekommt etwas, auch bei stummem Chat
+      if (m.whisper_to) {
+        const wsubs = await subsFor((s) => s.member_id === m.whisper_to);
+        const wtext = m.text.length > 140 ? m.text.slice(0, 137) + "…" : m.text;
+        return Response.json(await send(wsubs, { title: name + " flüstert dir zu", body: wtext, url: "./#chat", tag: "chat-" + id, mid: id }));
+      }
       let replyTo: number | null = null;
       if (m.reply_to) {
         const { data: o } = await db.from("messages").select("member_id").eq("id", m.reply_to).maybeSingle();

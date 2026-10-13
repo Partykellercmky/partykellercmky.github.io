@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <div class="wrap">
@@ -142,7 +142,8 @@
           <button type="button" class="cb-x" data-act="cb-cancel" aria-label="Abbrechen">&times;</button>
         </div>
         <div class="chat-row">
-          <input id="chat-input" maxlength="1000" placeholder="Nachricht … (@ erwähnt)" autocomplete="off" enterkeyhint="send" aria-label="Nachricht">
+          <button type="button" class="whisper-btn" id="whisper-btn" aria-label="Jemandem flüstern" title="Flüstern">psst</button>
+          <input id="chat-input" maxlength="1000" placeholder="Nachricht …" autocomplete="off" enterkeyhint="send" aria-label="Nachricht">
           <button class="btn" type="submit" id="chat-send">Senden</button>
         </div>
       </form>
@@ -210,6 +211,6 @@
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

@@ -234,4 +234,13 @@ nav button[aria-selected="true"]{background:var(--amber);color:var(--wood)}
 .sheet-acts button:last-child{border-bottom:0}
 .sheet-acts .danger{color:var(--red)}
 .sheet-acts .muted{color:var(--muted)}
+.bubble.whisper{border-style:dashed;border-color:#b48cff;background:rgba(120,80,200,.2)}
+.msg.mine .bubble.whisper{border-color:#b48cff;background:rgba(120,80,200,.28)}
+.wh-label{display:block;font-size:.72rem;font-style:italic;color:#cdb0ff;margin-bottom:2px;white-space:normal}
+.compose-bar.whisper{border-color:#b48cff}
+.compose-bar.whisper .cb-txt b{color:#cdb0ff}
+.whisper-btn{font:inherit;font-size:.8rem;font-style:italic;flex:none;min-width:52px;min-height:46px;border-radius:8px;background:var(--well);color:#cdb0ff;border:1px dashed #b48cff;cursor:pointer;padding:0 8px}
+.whisper-btn.on{background:#b48cff;color:#1a0f2a;border-style:solid}
+.mention-list .wh{color:#cdb0ff;border:1px dashed #b48cff}
+.wh-hint{align-self:center;font-size:.8rem;color:var(--muted);white-space:nowrap}
 @media (min-width:701px){.chat-form{left:50%;right:auto;transform:translateX(-50%);width:min(828px,calc(100% - 32px));bottom:92px;border:1px solid var(--line);border-radius:12px}.sheet{align-items:center}.sheet-card{border-radius:18px;border-bottom:1px solid var(--line)}}

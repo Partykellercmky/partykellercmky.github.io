@@ -347,7 +347,7 @@ function fmtText(text, re) {
 const readsOf = id => S.reads?.find(r => r.member_id === id) || { delivered_id: 0, read_id: 0 };
 const othersFor = author => S.members.filter(m => m.user_id && m.id !== author).map(m => m.id);
 function readState(m) {
-  const others = othersFor(m.member_id);
+  const others = m.whisper_to ? S.members.filter(x => x.id === m.whisper_to && x.user_id).map(x => x.id) : othersFor(m.member_id);
   const read = others.filter(id => readsOf(id).read_id >= m.id);
   const got = others.filter(id => Math.max(readsOf(id).delivered_id, readsOf(id).read_id) >= m.id);
   return { others, read, got };
@@ -360,7 +360,7 @@ function ticks(m) {
   return `<svg class="ticks${all ? " read" : ""}" viewBox="0 0 15 15" aria-label="${all ? "von allen gelesen" : "zugestellt"}">${two}</svg>`;
 }
 
-let replyTo = null, editing = null, sheetMsg = null;
+let replyTo = null, editing = null, whisperTo = null, sheetMsg = null;
 function renderChat() {
   if (!S.messages || !me) return;
   const stick = chatVisible() && nearBottom();
@@ -384,7 +384,7 @@ function renderChat() {
     const chips = Object.keys(REACTS).filter(k => counts[k]).map(k => `<span>${REACTS[k]}${counts[k] > 1 ? `<small>${counts[k]}</small>` : ""}</span>`).join("");
     const myR = rs.some(r => r.member_id === me.id);
     html += `<div class="msg${mine ? " mine" : ""}" id="m-${m.id}">${!mine && lastWho !== m.member_id ? `<span class="who">${esc(nameOf(m.member_id))}</span>` : ""}
-      <div class="bubble${atMe ? " at-me" : ""}" data-msg="${m.id}" role="button" tabindex="0">${quote}<span class="txt">${fmtText(m.text, re)}</span><span class="meta">${m.edited_at ? "bearbeitet · " : ""}${fmtTime(m.created_at)}${mine ? ticks(m) : ""}</span></div>
+      <div class="bubble${atMe ? " at-me" : ""}${m.whisper_to ? " whisper" : ""}" data-msg="${m.id}" role="button" tabindex="0">${m.whisper_to ? `<span class="wh-label">${mine ? "Geflüstert an " + esc(nameOf(m.whisper_to)) : "Flüstert dir zu"}</span>` : ""}${quote}<span class="txt">${fmtText(m.text, re)}</span><span class="meta">${m.edited_at ? "bearbeitet · " : ""}${fmtTime(m.created_at)}${mine ? ticks(m) : ""}</span></div>
       ${chips ? `<button type="button" class="reacts${myR ? " me" : ""}" data-msg="${m.id}" aria-label="Reaktionen ansehen">${chips}</button>` : ""}</div>`;
     lastWho = m.member_id;
   }
@@ -456,7 +456,8 @@ function renderSheet() {
     ${who ? `<div class="sheet-who">${who}</div>` : ""}
     ${info}
     <div class="sheet-acts">
-      <button type="button" data-act="reply">Antworten</button>
+      <button type="button" data-act="reply">${m.whisper_to ? "Zurückflüstern" : "Antworten"}</button>
+      ${!mine && !m.whisper_to ? `<button type="button" data-act="whisper">${esc(nameOf(m.member_id))} etwas zuflüstern</button>` : ""}
       <button type="button" data-act="copy">Kopieren</button>
       ${mine ? `<button type="button" data-act="edit">Bearbeiten</button>` : ""}
       ${can ? `<button type="button" class="danger" data-act="del">Löschen</button>` : ""}
@@ -472,15 +473,35 @@ async function react(kind) {
   closeSheet(); renderChat();
   const { error } = await q; if (error) { fail(error); refresh(); }
 }
+function renderCompose() {
+  const bar = $("#compose-bar"), titles = [];
+  let text = "";
+  if (editing !== null) {
+    titles.push("Nachricht bearbeiten"); text = S.messages.find(x => x.id === editing)?.text || "";
+  } else {
+    if (whisperTo) { titles.push("Flüstern an " + nameOf(whisperTo)); text = "Nur ihr beide seht diese Nachricht"; }
+    if (replyTo) {
+      const o = S.messages.find(x => x.id === replyTo);
+      titles.push("Antwort an " + (o?.member_id === me.id ? "dich selbst" : nameOf(o?.member_id)));
+      text = o?.text || "";
+    }
+  }
+  bar.hidden = !titles.length;
+  bar.classList.toggle("edit", editing !== null);
+  bar.classList.toggle("whisper", editing === null && !!whisperTo);
+  $("#cb-title").textContent = titles.join(" · ");
+  $("#cb-text").textContent = text.slice(0, 120);
+  $("#chat-send").textContent = editing !== null ? "Speichern" : whisperTo ? "Flüstern" : "Senden";
+  $("#whisper-btn").classList.toggle("on", !!whisperTo && editing === null);
+  $("#chat-input").placeholder = whisperTo && editing === null ? "Psst … nur " + nameOf(whisperTo) + " sieht das" : "Nachricht …";
+}
 function setCompose(mode, m) {
-  replyTo = mode === "reply" ? m.id : null;
-  editing = mode === "edit" ? m.id : null;
-  const bar = $("#compose-bar"), input = $("#chat-input");
-  bar.hidden = !mode;
-  bar.classList.toggle("edit", mode === "edit");
-  if (mode === "reply") { $("#cb-title").textContent = "Antwort an " + (m.member_id === me.id ? "dich selbst" : nameOf(m.member_id)); $("#cb-text").textContent = m.text.slice(0, 120); }
-  if (mode === "edit") { $("#cb-title").textContent = "Nachricht bearbeiten"; $("#cb-text").textContent = m.text.slice(0, 120); input.value = m.text; }
-  $("#chat-send").textContent = mode === "edit" ? "Speichern" : "Senden";
+  const input = $("#chat-input");
+  if (!mode) { replyTo = null; editing = null; whisperTo = null; }
+  if (mode === "reply") { editing = null; replyTo = m.id; if (m.whisper_to) whisperTo = m.member_id === me.id ? m.whisper_to : m.member_id; }
+  if (mode === "edit") { replyTo = null; whisperTo = null; editing = m.id; input.value = m.text; }
+  if (mode === "whisper") { editing = null; whisperTo = m; }
+  renderCompose();
   if (mode) input.focus();
 }
 function cancelCompose() { const wasEdit = editing !== null; setCompose(null); if (wasEdit) $("#chat-input").value = ""; }
@@ -494,6 +515,7 @@ document.getElementById("msg-sheet").addEventListener("click", async e => {
   if (a === "close") return closeSheet();
   if (a === "reply") { closeSheet(); return setCompose("reply", m); }
   if (a === "edit") { closeSheet(); return setCompose("edit", m); }
+  if (a === "whisper") { closeSheet(); return setCompose("whisper", m.member_id); }
   if (a === "copy") { try { await navigator.clipboard.writeText(m.text); toast("Kopiert"); } catch { toast("Kopieren ging nicht", true); } return closeSheet(); }
   if (a === "del") {
     if (!pendingDel) { pendingDel = true; b.textContent = "Wirklich löschen?"; setTimeout(() => { pendingDel = false; if (b.isConnected) b.textContent = "Löschen"; }, 4000); return; }
@@ -580,7 +602,8 @@ function mentionQuery() {
 }
 function renderMentionList() {
   const box = $("#mention-list"), mq = mentionQuery();
-  if (!mq) { box.hidden = true; return; }
+  box.dataset.mode = "";
+  if (!mq || whisperTo) { box.hidden = true; return; }
   const q = mq.q.toLowerCase();
   const opts = [{ id: 0, name: "alle" }, ...S.members.filter(m => m.id !== me.id && m.user_id)]
     .filter(m => m.name.toLowerCase().startsWith(q)).slice(0, 8);
@@ -589,7 +612,23 @@ function renderMentionList() {
   box.hidden = false;
 }
 $("#mention-list").addEventListener("mousedown", e => e.preventDefault());
+function openWhisperPicker() {
+  const box = $("#mention-list");
+  const opts = S.members.filter(m => m.id !== me.id && m.user_id);
+  if (!opts.length) return toast("Noch niemand außer dir ist eingeloggt.");
+  box.innerHTML = `<span class="wh-hint">Flüstern an:</span>` + opts.map(m => `<button type="button" class="wh" data-whisper="${m.id}">${esc(m.name)}</button>`).join("");
+  box.dataset.mode = "whisper"; box.hidden = false;
+}
+function closeList() { const box = $("#mention-list"); box.hidden = true; box.dataset.mode = ""; }
+$("#whisper-btn").addEventListener("click", () => {
+  if (editing !== null) return;
+  if (whisperTo) { whisperTo = null; renderCompose(); return; }
+  if ($("#mention-list").dataset.mode === "whisper" && !$("#mention-list").hidden) return closeList();
+  openWhisperPicker();
+});
 $("#mention-list").addEventListener("click", e => {
+  const w = e.target.closest("[data-whisper]");
+  if (w) { closeList(); return setCompose("whisper", +w.dataset.whisper); }
   const b = e.target.closest("[data-mention]"); const mq = mentionQuery(); if (!b || !mq) return;
   const input = $("#chat-input"), pos = input.selectionStart ?? input.value.length;
   const ins = "@" + b.dataset.mention + " ";
@@ -598,8 +637,8 @@ $("#mention-list").addEventListener("click", e => {
   $("#mention-list").hidden = true;
 });
 $("#chat-input").addEventListener("input", e => { renderMentionList(); setTyping(!!e.target.value.trim()); });
-$("#chat-input").addEventListener("keydown", e => { if (e.key === "Escape") { $("#mention-list").hidden = true; if (replyTo || editing) cancelCompose(); } });
-$("#chat-input").addEventListener("blur", () => setTimeout(() => { $("#mention-list").hidden = true; }, 150));
+$("#chat-input").addEventListener("keydown", e => { if (e.key === "Escape") { $("#mention-list").hidden = true; if (replyTo || editing !== null || whisperTo) cancelCompose(); } });
+$("#chat-input").addEventListener("blur", () => setTimeout(() => { if ($("#mention-list").dataset.mode !== "whisper") $("#mention-list").hidden = true; }, 150));
 $("#compose-bar").addEventListener("click", e => { if (e.target.closest("[data-act=cb-cancel]")) cancelCompose(); });
 
 /* Platz unter dem Verlauf an die Hoehe des Eingabebereichs anpassen */
@@ -648,7 +687,7 @@ $("#chat-form").addEventListener("submit", async e => {
   e.preventDefault();
   const input = $("#chat-input"), text = input.value.trim(); if (!text) return;
   const btn = $("#chat-send"); btn.disabled = true;
-  $("#mention-list").hidden = true;
+  closeList();
   if (editing !== null) {
     const id = editing;
     const { data, error } = await db.from("messages").update({ text }).eq("id", id).select().single();
@@ -659,8 +698,13 @@ $("#chat-form").addEventListener("submit", async e => {
     return;
   }
   const row = { member_id: me.id, text, reply_to: replyTo, ...findMentions(text) };
+  if (whisperTo) Object.assign(row, { whisper_to: whisperTo, mentions: [], mention_all: false });
   let { data, error } = await db.from("messages").insert(row).select().single();
-  if (error && /column/i.test(error.message || "")) ({ data, error } = await db.from("messages").insert({ member_id: me.id, text }).select().single());
+  if (error && /column/i.test(error.message || "")) {
+    btn.disabled = false;
+    if (whisperTo) return toast("Flüstern ist noch nicht eingerichtet (chat3.sql fehlt).", true);
+    ({ data, error } = await db.from("messages").insert({ member_id: me.id, text }).select().single());
+  }
   btn.disabled = false;
   if (error) return fail(error);
   input.value = ""; input.focus(); setTyping(false); setCompose(null);
