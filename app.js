@@ -789,7 +789,7 @@ function renderProst() {
   $("#prost-mine").hidden = !mine;
   if (mine) $("#prost-mine").innerHTML = mineHTML(mine);
   $("#prost-live").innerHTML = live.length ? live.map(liveHTML).join("")
-    : `<div class="empty">${mine ? "Außer dir ist gerade niemand unterwegs." : "Gerade ist niemand unterwegs. Mach du den Anfang."}</div>`;
+    : `<div class="empty">${mine ? "Außer dir trinkt gerade niemand." : "Gerade trinkt niemand. Mach du den Anfang."}</div>`;
   renderProstStats();
   renderProstHistory();
   renderWallDrinks();
@@ -1308,8 +1308,8 @@ function renderStart() {
     const body = live.length
       ? `<ul class="s-live">${live.map(s => { const ds = drinksOf(s.id), last = ds[ds.length - 1];
           return `<li><span class="av">${esc(nameOf(s.member_id)[0])}</span><span><span class="s-name"><b>${esc(s.member_id === me.id ? "Du" : nameOf(s.member_id))}</b> ${last ? DRINKS[last.kind]?.e || "" : ""}</span><small>${plural(ds.length, "Getränk", "Getränke")}${s.place ? " · " + esc(s.place) : ""}</small></span></li>`; }).join("")}</ul>`
-      : `<p class="muted s-empty">Gerade ist niemand unterwegs.</p>`;
-    html += startBlock("Gerade unterwegs", "prost", body + (mySession() ? "" : `<button class="btn s-prost" type="button" data-action="prost-open">Prost rufen</button>`), live.length ? "s-hot" : "");
+      : `<p class="muted s-empty">Gerade trinkt niemand.</p>`;
+    html += startBlock("Gerade am Trinken", "prost", body + (mySession() ? "" : `<button class="btn s-prost" type="button" data-action="prost-open">Prost rufen</button>`), live.length ? "s-hot" : "");
   }
 
   // Abstimmung: zuerst eine, bei der ich noch nicht abgestimmt habe
