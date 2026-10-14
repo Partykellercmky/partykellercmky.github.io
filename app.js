@@ -126,6 +126,7 @@ async function load(myId = me?.id) {
   await loadSongs();
   await loadPhotos();
   await loadBirthdays();
+  await loadMemories();
 }
 async function loadBirthdays() {
   const { data, error } = await db.from("members").select("id,bday_day,bday_month,bday_year");
@@ -159,7 +160,7 @@ const nameOf = id => S.members.find(m => m.id === id)?.name || "Ehemaliges Mitgl
 const canDelete = createdBy => me && (createdBy === me.id || me.is_admin);
 
 /* ---------- Anzeige ---------- */
-function render() { renderBirthdays(); renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderNews(); renderStart(); }
+function render() { renderMemories(); renderBirthdays(); renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderNews(); renderStart(); }
 
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;
@@ -255,10 +256,10 @@ function photosHTML(e) {
     <div class="ph-acts"><label class="btn ghost ph-add">Fotos hochladen<input type="file" accept="image/*" multiple hidden data-phup="${e.id}"></label>${allBtn}</div>
     ${grid}</div>`;
 }
-async function signUrls(paths) {
+async function signUrls(paths, bucket = "fotos") {
   const now = Date.now(), need = [...new Set(paths)].filter(p => !(urlCache[p]?.until > now));
   if (!need.length) return true;
-  const { data, error } = await db.storage.from("fotos").createSignedUrls(need, 3600);
+  const { data, error } = await db.storage.from(bucket).createSignedUrls(need, 3600);
   if (error) { fail(error); return false; }
   data.forEach(d => { if (d.signedUrl) urlCache[d.path] = { url: d.signedUrl, until: now + 50 * 60000 }; });
   return true;
@@ -497,7 +498,7 @@ function renderAdmin() {
   if (!me.is_admin) return;
   const free = S.members.filter(m => !m.user_id);
   const badge = $("#req-badge"); badge.hidden = !S.requests.length; badge.textContent = S.requests.length;
-  const more = $("#more-badge"); more.hidden = !S.requests.length; more.textContent = S.requests.length;
+  updateMoreBadge();
   $("#requests").innerHTML = S.requests.length ? S.requests.map(r => {
     const guess = free.find(m => m.name.toLowerCase() === r.name.trim().toLowerCase());
     return `<div class="req"><div><b>${esc(r.name)}</b><div class="mail">${esc(r.email)}</div></div>
@@ -535,7 +536,7 @@ async function currentSub() {
 }
 async function renderPush() {
   const card = $("#push-card"), text = $("#push-text"), btn = $("#push-btn");
-  $("#chat-push-row").hidden = true; $("#prost-push-row").hidden = true;
+  $("#chat-push-row").hidden = true; $("#prost-push-row").hidden = true; $("#mem-push-row").hidden = true;
   card.hidden = false; btn.hidden = false; card.classList.remove("on");
   if (isIOS && !isStandalone()) { text.textContent = "Leg die App zuerst auf den Home-Bildschirm und öffne sie von dort. Dann kannst du Benachrichtigungen einschalten."; btn.hidden = true; return; }
   if (!pushSupported) { text.textContent = "Dein Browser kann leider keine Benachrichtigungen empfangen."; btn.hidden = true; return; }
@@ -552,10 +553,15 @@ async function renderPush() {
   text.textContent = pushOn ? "Sind auf diesem Gerät an: neue Termine, Erinnerungen am Vortag, neue Abstimmungen und Antworten auf dein Prost." : "Bekomm Bescheid bei neuen Terminen, Abstimmungen, Chat-Nachrichten und am Tag vor einem Treffen.";
   $("#chat-push-row").hidden = !pushOn;
   $("#prost-push-row").hidden = !pushOn || !S.prostReady;
+  $("#mem-push-row").hidden = !pushOn || !S.memReady;
   if (pushOn) {
-    // Spalte "prost" gibt es erst nach prost.sql
-    let { data, error } = await db.from("push_subscriptions").select("chat,prost").eq("endpoint", sub.endpoint).maybeSingle();
-    if (error) ({ data } = await db.from("push_subscriptions").select("chat").eq("endpoint", sub.endpoint).maybeSingle());
+    // Spalten "prost" und "memories" gibt es erst nach prost.sql bzw. memories.sql
+    let data = null, error = true;
+    for (const cols of ["chat,prost,memories", "chat,prost", "chat"]) {
+      ({ data, error } = await db.from("push_subscriptions").select(cols).eq("endpoint", sub.endpoint).maybeSingle());
+      if (!error) break;
+    }
+    $("#mem-push").checked = data ? data.memories !== false : true;
     $("#chat-push").checked = data ? data.chat !== false : true;
     $("#prost-push").checked = data ? data.prost !== false : true;
   }
@@ -1496,9 +1502,9 @@ async function newsAction(t) {
 }
 
 /* ---------- Navigation: Start, Termine, Prost, Chat, Mehr ---------- */
-const VIEWS = ["start", "termine", "prost", "chat", "mehr", "neues", "gruppe", "wall", "anleitungen", "einstellungen", "admin"];
-const UNDER_MORE = { neues: 1, gruppe: 1, wall: 1, anleitungen: 1, einstellungen: 1, admin: 1 };
-const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", neues: "Neues", gruppe: "Gruppe", wall: "Wall of Fame", anleitungen: "Anleitungen", einstellungen: "Einstellungen", admin: "Admin" };
+const VIEWS = ["start", "termine", "prost", "chat", "mehr", "neues", "gruppe", "wall", "memories", "anleitungen", "einstellungen", "admin"];
+const UNDER_MORE = { neues: 1, gruppe: 1, wall: 1, memories: 1, anleitungen: 1, einstellungen: 1, admin: 1 };
+const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", neues: "Neues", gruppe: "Gruppe", wall: "Wall of Fame", memories: "Memories", anleitungen: "Anleitungen", einstellungen: "Einstellungen", admin: "Admin" };
 let currentView = "start";
 function updateHeader() {
   const inApp = !$("#screen-app").hidden;
@@ -1520,6 +1526,7 @@ function showView(name) {
   if (name === "prost") { renderProstMap(); updateProstBadge(); }
   if (name === "start" && me) renderStart();
   if (name === "neues" && me) markNewsRead();
+  if (name === "memories" && me) { markMemSeen(); loadMemThumbs(); }
   if (name === "chat") { renderChat.done = false; if (S.messages) renderChat(); renderStatus(); }
   else { window.scrollTo({ top: 0 }); closeSheet(); setTyping(false); }
   updateChatBadge();
@@ -1574,6 +1581,8 @@ function renderStart() {
     const n = fresh[0];
     html += startBlock("Neu in der App", "neues", `<button type="button" class="s-news" data-tab="neues"><b>${esc(n.title)}</b>${n.body ? `<span>${esc(n.body.slice(0, 110))}${n.body.length > 110 ? " …" : ""}</span>` : ""}${fresh.length > 1 ? `<small>und ${fresh.length - 1} ${fresh.length === 2 ? "weitere Neuigkeit" : "weitere Neuigkeiten"}</small>` : ""}</button>`, "s-newsblock");
   }
+
+  html += startMemory();
 
   // Naechstes Treffen
   const next = [...S.events].filter(e => e.day >= today()).sort((a, b) => a.day.localeCompare(b.day))[0];
@@ -1646,6 +1655,8 @@ document.addEventListener("click", async e => {
   if (a === "logout") return logout();
   if (a === "bday-clear") return run(db.rpc("set_my_birthday", { p_day: null, p_month: null, p_year: null }), "Geburtstag entfernt");
   if (a === "bday-chat") return congratulate(+t.dataset.id);
+  if (t.dataset.mem) return openMem(+t.dataset.mem);
+  if (a === "mem-cancel") return resetMemForm();
   if (a === "push-toggle") return togglePush();
   if (a === "recheck") return boot();
   if (a && a.startsWith("prost-")) return prostAction(a);
@@ -1873,4 +1884,258 @@ $("#admin-bday-form").addEventListener("submit", async e => {
   if (await run(db.rpc("set_member_birthday", { target_member: target, ...v }), `Geburtstag für ${nameOf(target)} gespeichert`)) {
     $("#abday-member").value = ""; $("#abday-day").value = ""; $("#abday-month").value = ""; $("#abday-year").value = "";
   }
+});
+
+/* ---------- Memories (Polaroid-Wand) ---------- */
+const MEM_DAYS = 60, MAX_PINS = 3;
+const MEM_REACTS = { love: "Herz", lol: "Lachen", cheers: "Prost" };
+const MEM_ICONS = {
+  love: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.6 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/></svg>',
+  lol: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8 13.5c1 2 2.4 3 4 3s3-1 4-3z"/><path d="M8.5 9.8l1.5-.8M15.5 9.8l-1.5-.8"/></svg>',
+  cheers: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h7v9a1.5 1.5 0 0 1-1.5 1.5h-4A1.5 1.5 0 0 1 5 15z"/><path d="M12 8.5h1.5a1.8 1.8 0 0 1 1.8 1.8v1.6a1.8 1.8 0 0 1-1.8 1.8H12"/><path d="M8.5 16.5V20M6 20h5"/><path d="M17.5 4.5l1-1.5M19.5 7l1.6-.6M16 3.5l-.2-1.6"/></svg>',
+};
+async function loadMemories() {
+  const [m, r] = await Promise.all([
+    db.from("memories").select("*").order("created_at", { ascending: false }),
+    db.from("memory_reactions").select("*"),
+  ]);
+  // Tabellen gibt es erst nach memories.sql
+  S.memReady = !m.error;
+  S.memories = m.data || []; S.memReacts = r.data || [];
+}
+// Reihenfolge an der Wand und beim Durchwischen: angepinnte zuerst, dann neueste
+const memList = () => [...(S.memories || [])].sort((a, b) => (b.pinned - a.pinned) || b.created_at.localeCompare(a.created_at));
+function memLeft(m) {
+  const until = new Date(m.created_at).getTime() + MEM_DAYS * 864e5;
+  return Math.ceil((until - Date.now()) / 864e5);
+}
+function memLeftText(m) {
+  if (m.pinned) return "angepinnt, bleibt";
+  const n = memLeft(m);
+  if (n <= 0) return "wird heute Nacht gelöscht";
+  if (n === 1) return "noch 1 Tag";
+  return `noch ${n} Tage`;
+}
+const memTilt = id => ((id * 37) % 7 - 3) * 0.9;
+const memReactsOf = id => (S.memReacts || []).filter(r => r.memory_id === id);
+const memSeen = () => +(store.get("pk-mem-seen") || 0);
+function markMemSeen() {
+  const top = Math.max(0, ...(S.memories || []).map(m => m.id));
+  if (top > memSeen()) store.set("pk-mem-seen", String(top));
+  updateMemBadge();
+}
+function updateMemBadge() {
+  const n = (S.memories || []).filter(m => m.id > memSeen() && m.added_by !== me?.id).length;
+  const b = $("#mem-badge"); b.hidden = !n; b.textContent = n;
+  updateMoreBadge();
+}
+const newMemCount = () => (S.memories || []).filter(m => m.id > memSeen() && m.added_by !== me?.id).length;
+function updateMoreBadge() {
+  const n = (S.requests?.length || 0) + newMemCount();
+  const more = $("#more-badge"); more.hidden = !n; more.textContent = n;
+}
+
+function polaroidHTML(m) {
+  const u = urlCache[m.thumb]?.url, left = memLeft(m), rs = memReactsOf(m.id).length;
+  const warn = !m.pinned && left <= 7;
+  return `<button type="button" class="polaroid${m.pinned ? " pinned" : ""}" data-mem="${m.id}" style="--tilt:${memTilt(m.id)}deg" aria-label="${esc(m.caption || "Memory")} ansehen">
+    ${m.pinned ? '<span class="tack" aria-hidden="true"></span>' : ""}
+    <span class="pol-img">${u ? `<img src="${esc(u)}" alt="" loading="lazy">` : ""}</span>
+    <span class="pol-cap">${esc(m.caption || " ")}</span>
+    <span class="pol-meta"><span class="pol-left${warn ? " warn" : ""}">${memLeftText(m)}</span>${rs ? `<span class="pol-rs">${rs}</span>` : ""}</span>
+  </button>`;
+}
+
+function renderMemories() {
+  const ready = !!S.memReady;
+  $("#menu-memories").hidden = false;
+  $("#mem-setup").hidden = ready;
+  $("#mem-upload").hidden = !ready || !me?.is_admin;
+  if (!ready) { $("#mem-lead").textContent = ""; $("#mem-wall").innerHTML = ""; $("#mem-pinned-wrap").hidden = true; return; }
+  const all = memList(), pinned = all.filter(m => m.pinned), rest = all.filter(m => !m.pinned);
+  $("#menu-memories-sub").textContent = all.length ? `${all.length} ${all.length === 1 ? "Bild" : "Bilder"} an der Kellerwand` : "Bilder an der Kellerwand";
+  $("#mem-lead").textContent = all.length
+    ? "Jedes Bild bleibt 2 Monate hängen und löscht sich dann von selbst. Speichern lohnt sich."
+    : me?.is_admin ? "Noch hängt nichts an der Wand. Wähl oben die ersten Fotos aus." : "Noch hängt nichts an der Wand. Die Admins hängen hier eure besten Momente auf.";
+  $("#mem-pinned-wrap").hidden = !pinned.length;
+  $("#mem-pinned").innerHTML = pinned.map(polaroidHTML).join("");
+  $("#mem-wall").innerHTML = rest.map(polaroidHTML).join("");
+  // Termin-Auswahl beim Hochladen
+  const sel = $("#mem-event");
+  if (me?.is_admin && document.activeElement !== sel) {
+    const keep = sel.value;
+    const evs = [...S.events].sort((a, b) => b.day.localeCompare(a.day)).slice(0, 30);
+    sel.innerHTML = `<option value="">Kein Termin (freiwillig)</option>` + evs.map(e => `<option value="${e.id}">${esc(e.title)} · ${fmtDate(e.day + "T12:00")}</option>`).join("");
+    sel.value = keep;
+  }
+  updateMemBadge();
+  if (viewMem) fillMemSheet();
+  if (currentView === "memories") loadMemThumbs();
+}
+
+let memThumbsBusy = false;
+async function loadMemThumbs() {
+  const list = S.memories || [];
+  if (!list.length || memThumbsBusy || !list.some(m => !(urlCache[m.thumb]?.until > Date.now()))) return;
+  memThumbsBusy = true;
+  const ok = await signUrls(list.map(m => m.thumb), "memories");
+  memThumbsBusy = false;
+  if (ok) { renderMemories(); if (currentView === "start") renderStart(); }
+}
+
+// Startseite: neueste Memory, solange sie juenger als 3 Tage ist
+function startMemory() {
+  if (!S.memReady) return "";
+  const fresh = (S.memories || []).filter(m => Date.now() - new Date(m.created_at).getTime() < 3 * 864e5);
+  if (!fresh.length) return "";
+  const m = fresh[0], u = urlCache[m.thumb]?.url;
+  if (!u) setTimeout(loadMemThumbs, 0);
+  return startBlock(fresh.length > 1 ? `Neu an der Wand · ${fresh.length} Bilder` : "Neu an der Wand", "memories",
+    `<button type="button" class="s-mem" data-mem="${m.id}"><span class="s-mem-img">${u ? `<img src="${esc(u)}" alt="">` : ""}</span><span class="s-mem-txt"><b>${esc(m.caption || "Neue Memory")}</b><small>von ${esc(m.added_by === me.id ? "dir" : nameOf(m.added_by))} · ${memLeftText(m)}</small></span></button>`, "s-memblock");
+}
+
+/* Hochladen (nur Admins), mehrere Fotos auf einmal */
+let memFiles = [];
+function resetMemForm() {
+  memFiles = []; $("#mem-files").value = ""; $("#mem-caption").value = ""; $("#mem-event").value = "";
+  $("#mem-form").hidden = true; $(".mem-pick").hidden = false;
+}
+$("#mem-files").addEventListener("change", e => {
+  memFiles = [...e.target.files].filter(f => f.type.startsWith("image/") || /\.(heic|heif|jpe?g|png|webp)$/i.test(f.name));
+  if (!memFiles.length) return resetMemForm();
+  $("#mem-picked").textContent = memFiles.length === 1 ? "1 Foto ausgewählt" : `${memFiles.length} Fotos ausgewählt`;
+  $("#mem-form").hidden = false; $(".mem-pick").hidden = true;
+});
+$("#mem-form").addEventListener("submit", async e => {
+  e.preventDefault(); if (!memFiles.length) return;
+  const btn = $("#mem-send"); btn.disabled = true;
+  const caption = $("#mem-caption").value.trim(), eventId = +$("#mem-event").value || null;
+  const batch = rid(), st = db.storage.from("memories");
+  let firstId = null, ok = 0;
+  for (const [i, f] of memFiles.entries()) {
+    toast(`Lade Bild ${i + 1} von ${memFiles.length} hoch …`);
+    try {
+      const [big, small] = await Promise.all([shrink(f, 1600, 0.8), shrink(f, 500, 0.72)]);
+      const id = rid(), path = `${batch}/${id}.jpg`, thumb = `${batch}/${id}_t.jpg`;
+      let r = await st.upload(path, big, { contentType: "image/jpeg" }); if (r.error) throw r.error;
+      r = await st.upload(thumb, small, { contentType: "image/jpeg" }); if (r.error) { await st.remove([path]); throw r.error; }
+      r = await db.from("memories").insert({ path, thumb, caption, event_id: eventId, batch, added_by: me.id }).select("id").single();
+      if (r.error) { await st.remove([path, thumb]); throw r.error; }
+      if (!firstId) firstId = r.data.id;
+      ok++;
+    } catch (err) { fail(err); }
+  }
+  btn.disabled = false;
+  if (firstId) db.rpc("push_memories", { p_id: firstId }).then(({ error }) => { if (error) console.warn(error); });
+  resetMemForm();
+  await refresh();
+  markMemSeen(); loadMemThumbs();
+  if (ok) toast(ok === 1 ? "Bild hängt an der Wand" : `${ok} Bilder hängen an der Wand`);
+});
+
+/* Bild gross ansehen */
+let viewMem = null;
+async function openMem(id) {
+  const m = (S.memories || []).find(x => x.id === id); if (!m) return;
+  viewMem = id;
+  const sh = $("#mem-sheet");
+  sh.querySelector("img").src = urlCache[m.thumb]?.url || "";
+  sh.querySelector(".mv-edit").hidden = true;
+  sh.querySelector("[data-mv=del]").textContent = "Löschen";
+  fillMemSheet();
+  sh.hidden = false;
+  await signUrls([m.path], "memories");
+  if (viewMem === id && urlCache[m.path]) sh.querySelector("img").src = urlCache[m.path].url;
+}
+function fillMemSheet() {
+  const m = (S.memories || []).find(x => x.id === viewMem);
+  if (!m) return closeMem();
+  const sh = $("#mem-sheet"), list = memList(), i = list.findIndex(x => x.id === m.id);
+  const ev = m.event_id && S.events.find(e => e.id === m.event_id);
+  sh.querySelector(".mv-who").textContent = `${fmtDate(m.created_at)} · von ${m.added_by === me.id ? "dir" : nameOf(m.added_by)} · ${i + 1} von ${list.length}`;
+  sh.querySelector(".mv-cap").innerHTML = esc(m.caption) + (ev && ev.title !== m.caption ? `<small>${esc(ev.title)}</small>` : "");
+  const left = sh.querySelector(".mv-left");
+  left.textContent = m.pinned ? "Angepinnt, löscht sich nicht" : memLeft(m) <= 0 ? "Wird heute Nacht gelöscht, jetzt speichern" : `Löscht sich in ${memLeft(m) === 1 ? "1 Tag" : memLeft(m) + " Tagen"}`;
+  left.classList.toggle("warn", !m.pinned && memLeft(m) <= 7);
+  const rs = memReactsOf(m.id), mine = rs.find(r => r.member_id === me.id)?.kind;
+  sh.querySelector(".mv-reacts").innerHTML = Object.keys(MEM_REACTS).map(k => {
+    const n = rs.filter(r => r.kind === k).length, who = rs.filter(r => r.kind === k).map(r => nameOf(r.member_id)).join(", ");
+    return `<button type="button" class="chip mv-r${mine === k ? " on" : ""}" data-mv="react" data-k="${k}" aria-label="${MEM_REACTS[k]}${who ? ": " + esc(who) : ""}" title="${esc(who)}">${MEM_ICONS[k]}<span>${n || ""}</span></button>`;
+  }).join("");
+  sh.querySelector("[data-mv=prev]").disabled = i <= 0;
+  sh.querySelector("[data-mv=next]").disabled = i >= list.length - 1;
+  sh.querySelector(".mv-admin").hidden = !me?.is_admin;
+  sh.querySelector("[data-mv=pin]").textContent = m.pinned ? "Abpinnen" : "Anpinnen";
+}
+function closeMem() { viewMem = null; $("#mem-sheet").hidden = true; }
+async function saveMem() {
+  const m = (S.memories || []).find(x => x.id === viewMem); if (!m) return;
+  try {
+    await signUrls([m.path], "memories");
+    const blob = await (await fetch(urlCache[m.path].url)).blob();
+    const name = `partykeller-memory-${m.id}.jpg`, file = new File([blob], name, { type: "image/jpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); } catch (err) { if (err.name !== "AbortError") throw err; }
+      return;
+    }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast("Bild wird gespeichert");
+  } catch (err) { fail(err); }
+}
+async function reactMem(kind) {
+  const m = viewMem; if (!m) return;
+  const mine = memReactsOf(m).find(r => r.member_id === me.id);
+  const q = mine?.kind === kind
+    ? db.from("memory_reactions").delete().eq("memory_id", m).eq("member_id", me.id)
+    : db.from("memory_reactions").upsert({ memory_id: m, member_id: me.id, kind });
+  await run(q);
+}
+async function pinMem() {
+  const m = (S.memories || []).find(x => x.id === viewMem); if (!m) return;
+  if (!m.pinned && S.memories.filter(x => x.pinned).length >= MAX_PINS) return toast(`Es sind schon ${MAX_PINS} Bilder angepinnt. Nimm erst eins ab.`, true);
+  await run(db.from("memories").update({ pinned: !m.pinned }).eq("id", m.id), m.pinned ? "Abgepinnt, löscht sich jetzt nach 2 Monaten" : "Angepinnt, bleibt für immer");
+}
+async function deleteMem(btn) {
+  const m = (S.memories || []).find(x => x.id === viewMem); if (!m) return;
+  if (btn.textContent !== "Wirklich löschen?") { btn.textContent = "Wirklich löschen?"; return; }
+  const { error } = await db.storage.from("memories").remove([m.path, m.thumb]);
+  if (error) return fail(error);
+  closeMem();
+  run(db.from("memories").delete().eq("id", m.id), "Bild gelöscht");
+}
+$("#mem-sheet").addEventListener("click", e => {
+  const b = e.target.closest("[data-mv]");
+  if (!b) { if (e.target.id === "mem-sheet") closeMem(); return; }
+  const k = b.dataset.mv;
+  if (k === "close") return closeMem();
+  if (k === "save") return saveMem();
+  if (k === "react") return reactMem(b.dataset.k);
+  if (k === "pin") return pinMem();
+  if (k === "del") return deleteMem(b);
+  if (k === "edit") {
+    const f = $("#mem-sheet .mv-edit"), m = S.memories.find(x => x.id === viewMem);
+    f.hidden = !f.hidden; if (!f.hidden) { f.querySelector("input").value = m?.caption || ""; f.querySelector("input").focus(); }
+    return;
+  }
+  const list = memList(), i = list.findIndex(x => x.id === viewMem);
+  const n = list[i + (k === "next" ? 1 : -1)]; if (n) openMem(n.id);
+});
+$("#mem-sheet .mv-edit").addEventListener("submit", async e => {
+  e.preventDefault();
+  const id = viewMem, text = e.target.querySelector("input").value.trim().slice(0, 120);
+  e.target.hidden = true;
+  await run(db.from("memories").update({ caption: text }).eq("id", id), "Text gespeichert");
+});
+let mvX = null;
+$("#mem-sheet").addEventListener("touchstart", e => { mvX = e.touches[0].clientX; }, { passive: true });
+$("#mem-sheet").addEventListener("touchend", e => {
+  if (mvX === null) return; const dx = e.changedTouches[0].clientX - mvX; mvX = null;
+  if (Math.abs(dx) > 50) $(`#mem-sheet [data-mv=${dx < 0 ? "next" : "prev"}]`).click();
+});
+$("#mem-push").addEventListener("change", async e => {
+  const sub = await currentSub(); if (!sub) return;
+  const { error } = await db.rpc("set_push_memories", { p_endpoint: sub.endpoint, p_on: e.target.checked });
+  if (error) { e.target.checked = !e.target.checked; return fail(error); }
+  toast(e.target.checked ? "Memories-Meldungen an" : "Memories-Meldungen aus");
 });

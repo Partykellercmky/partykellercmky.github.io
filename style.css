@@ -572,3 +572,48 @@ details.guide ol:last-child{padding-bottom:16px}
 .s-bday-soon{list-style:none;margin:0;padding:0;display:grid;gap:4px}
 .s-bday-soon li{display:flex;justify-content:space-between;gap:10px}
 .s-bday-soon span{color:var(--teal);font-size:.88rem;text-align:right}
+
+/* ---------- Memories (Polaroid-Wand) ---------- */
+.mem-upload{display:grid;gap:10px;margin-bottom:16px}
+.mem-upload h3{margin:0}
+.mem-pick{display:flex;align-items:center;justify-content:center;cursor:pointer}
+.mem-form{display:grid;gap:8px}
+.mem-picked{margin:0;color:var(--teal);font-family:var(--font-head);font-size:.8rem;letter-spacing:.05em}
+.mem-form-acts{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+#mem-pinned-wrap{margin-bottom:22px}
+#mem-pinned-wrap h2{font-size:1rem}
+.mem-wall{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 16px;padding:8px 4px 4px}
+@media (min-width:600px){.mem-wall{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.polaroid{position:relative;display:flex;flex-direction:column;gap:6px;min-width:0;font:inherit;text-align:left;cursor:pointer;
+  background:#f4ece0;color:#2a1c16;border:0;border-radius:3px;padding:8px 8px 10px;transform:rotate(var(--tilt,0deg));
+  box-shadow:0 8px 18px rgba(0,0,0,.55),0 1px 0 rgba(255,255,255,.4) inset;transition:transform .15s ease}
+.polaroid:active{transform:rotate(0deg) scale(.98)}
+.polaroid.pinned{box-shadow:0 8px 18px rgba(0,0,0,.55),0 0 0 2px var(--amber),0 0 18px rgba(242,180,92,.35)}
+.tack{position:absolute;top:-7px;left:50%;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:var(--pink);box-shadow:0 0 10px var(--pink),inset -2px -2px 3px rgba(0,0,0,.35);z-index:1}
+.pol-img{display:block;aspect-ratio:1;background:#1e1612;overflow:hidden}
+.pol-img img{width:100%;height:100%;object-fit:cover;display:block}
+.pol-cap{font-family:"Caveat","Segoe Print","Bradley Hand",cursive;font-size:1.05rem;line-height:1.2;min-height:1.2em;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pol-meta{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:.7rem;color:#7a6455}
+.pol-left.warn{color:#d4246f;font-weight:700}
+.pol-rs{color:#7a6455}
+.pol-rs::before{content:"\2665 ";color:#d4246f}
+.mv-cap{margin:2px 0 0;font-family:"Caveat","Segoe Print","Bradley Hand",cursive;font-size:1.35rem;line-height:1.2;color:var(--cream);text-align:center}
+.mv-cap small{display:block;font-family:var(--font-body);font-size:.8rem;color:var(--muted)}
+.mv-left{margin:2px 0 8px;text-align:center;color:var(--muted);font-size:.82rem}
+.mv-left.warn{color:var(--pink)}
+.mv-reacts{display:flex;justify-content:center;gap:8px;margin-bottom:10px}
+.mv-r{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-width:64px;justify-content:center}
+.mv-r svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mv-r.on{border-color:var(--pink);color:var(--pink);box-shadow:0 0 10px rgba(255,79,163,.35)}
+.mv-r.on svg{fill:rgba(255,79,163,.25)}
+.mv-edit{display:flex;gap:8px;margin:6px 0}
+.mv-admin{display:flex;justify-content:center;gap:20px;margin-top:4px}
+.mv-admin .link{padding:6px 2px;min-height:0}
+.mv img{margin-bottom:4px}
+.s-memblock{border-color:var(--amber)}
+.s-mem{display:flex;align-items:center;gap:12px;width:100%;font:inherit;text-align:left;color:var(--cream);background:none;border:0;padding:0;cursor:pointer}
+.s-mem-img{flex:none;width:64px;height:72px;background:#f4ece0;padding:4px 4px 12px;border-radius:2px;transform:rotate(-3deg);box-shadow:0 4px 10px rgba(0,0,0,.5)}
+.s-mem-img img{width:100%;height:100%;object-fit:cover;display:block}
+.s-mem-txt{min-width:0}
+.s-mem-txt b{display:block;overflow-wrap:anywhere}
+.s-mem-txt small{display:block;color:var(--muted)}

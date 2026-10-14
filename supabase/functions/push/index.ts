@@ -28,7 +28,7 @@ const berlinDate = (offsetDays: number) => {
 };
 
 type Msg = { title: string; body: string; url: string; tag: string; mid?: number };
-type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; auth: string; chat?: boolean; prost?: boolean };
+type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; auth: string; chat?: boolean; prost?: boolean; memories?: boolean };
 
 // Prost: was jemand in der Hand hat
 const DRINKS: Record<string, string> = {
@@ -224,6 +224,35 @@ Deno.serve(async (req) => {
         })).sent;
       }
       return Response.json({ birthdays: kids.length, names: joinNames(kids.map((k) => k.name)), sent: total });
+    }
+    if (type === "memories") {
+      // Ein Stapel = eine Nachricht, egal wie viele Bilder
+      const { data: first, error } = await db.from("memories").select("batch,caption,added_by").eq("id", id).maybeSingle();
+      if (error) throw error;
+      if (!first) return Response.json({ skipped: true, grund: "Memory " + id + " nicht gefunden" });
+      const { count } = await db.from("memories").select("id", { count: "exact", head: true }).eq("batch", first.batch);
+      const n = count || 1;
+      const subs = await subsFor((s) => s.member_id !== first.added_by && s.memories !== false);
+      return Response.json(await send(subs, {
+        title: n === 1 ? "Neue Memory an der Wand" : n + " neue Memories an der Wand",
+        body: first.caption || "Schau mal rein!",
+        url: "./#memories", tag: "memories-" + first.batch,
+      }));
+    }
+    if (type === "memories_cleanup") {
+      // Nicht angepinnte Bilder, die aelter als 60 Tage sind: Datei und Eintrag loeschen
+      const cutoff = new Date(Date.now() - 60 * 86400000).toISOString();
+      const { data: old, error } = await db.from("memories").select("id,path,thumb").eq("pinned", false).lt("created_at", cutoff);
+      if (error) throw error;
+      if (!old?.length) return Response.json({ deleted: 0 });
+      const files = old.flatMap((m: { path: string; thumb: string }) => [m.path, m.thumb]);
+      for (let i = 0; i < files.length; i += 100) {
+        const { error: se } = await db.storage.from("memories").remove(files.slice(i, i + 100));
+        if (se) throw se;
+      }
+      const { error: de } = await db.from("memories").delete().in("id", old.map((m: { id: number }) => m.id));
+      if (de) throw de;
+      return Response.json({ deleted: old.length });
     }
     return new Response("Unbekannter Typ", { status: 400 });
   } catch (err) {
