@@ -160,7 +160,7 @@ const nameOf = id => S.members.find(m => m.id === id)?.name || "Ehemaliges Mitgl
 const canDelete = createdBy => me && (createdBy === me.id || me.is_admin);
 
 /* ---------- Anzeige ---------- */
-function render() { renderMemories(); renderBirthdays(); renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderNews(); renderStart(); }
+function render() { document.body.classList.toggle("is-admin", !!me?.is_admin); renderMemories(); renderBirthdays(); renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderNews(); renderStart(); }
 
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;

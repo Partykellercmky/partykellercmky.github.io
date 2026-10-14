@@ -617,3 +617,6 @@ details.guide ol:last-child{padding-bottom:16px}
 .s-mem-txt{min-width:0}
 .s-mem-txt b{display:block;overflow-wrap:anywhere}
 .s-mem-txt small{display:block;color:var(--muted)}
+
+/* Nur fuer Admins sichtbar */
+body:not(.is-admin) .admin-only{display:none}
