@@ -36,6 +36,22 @@ const DRINKS: Record<string, string> = {
   cocktail: "einen Cocktail", shot: "einen Shot", alkfrei: "was Alkoholfreies", wasser: "ein Wasser",
 };
 
+// Geburtstage: wer hat an einem Tag (yyyy-mm-dd) Geburtstag? 29.02. wird in normalen Jahren am 28.02. gefeiert.
+type Bday = { id: number; name: string; bday_day: number; bday_month: number; bday_year: number | null };
+async function birthdaysOn(iso: string): Promise<Bday[]> {
+  const [y, m, d] = iso.split("-").map(Number);
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const { data, error } = await db.from("members").select("id,name,bday_day,bday_month,bday_year").not("bday_day", "is", null);
+  if (error) {
+    // Spalten gibt es erst nach geburtstag.sql
+    if (String(error.message || "").includes("bday")) return [];
+    throw error;
+  }
+  return (data as Bday[]).filter((b) => b.bday_month === m && (b.bday_day === d || (!leap && m === 2 && d === 28 && b.bday_day === 29)));
+}
+const ageOn = (b: Bday, iso: string) => b.bday_year ? Number(iso.slice(0, 4)) - b.bday_year : null;
+const joinNames = (names: string[]) => names.length < 2 ? names.join("") : names.slice(0, -1).join(", ") + " und " + names[names.length - 1];
+
 async function subsFor(filter: (s: Sub) => boolean): Promise<Sub[]> {
   const { data, error } = await db.from("push_subscriptions").select("*");
   if (error) throw error;
@@ -173,7 +189,41 @@ Deno.serve(async (req) => {
         const subs = await subsFor((s) => !skip.has(s.member_id));
         total += (await send(subs, { title: "Morgen: " + e.title, body: (e.info ? e.info + " · " : "") + "Schau rein, wer alles dabei ist.", url: "./#termine", tag: "reminder-" + e.id })).sent;
       }
-      return Response.json({ events: (events || []).length, sent: total });
+      // Vorwarnung: wer hat morgen Geburtstag? (das Geburtstagskind selbst bekommt nichts)
+      const kids = await birthdaysOn(tomorrow);
+      for (const b of kids) {
+        const age = ageOn(b, tomorrow);
+        const subs = await subsFor((s) => s.member_id !== b.id);
+        total += (await send(subs, {
+          title: "Morgen hat " + b.name + " Geburtstag",
+          body: (age ? b.name + " wird " + age + ". " : "") + "Nicht vergessen zu gratulieren!",
+          url: "./#gruppe", tag: "bday-eve-" + b.id,
+        })).sent;
+      }
+      return Response.json({ events: (events || []).length, birthdays: kids.length, sent: total });
+    }
+    if (type === "birthday") {
+      const day = berlinDate(0);
+      const kids = await birthdaysOn(day);
+      let total = 0;
+      for (const b of kids) {
+        const age = ageOn(b, day);
+        // Das Geburtstagskind bekommt einen eigenen Glueckwunsch
+        const own = await subsFor((s) => s.member_id === b.id);
+        total += (await send(own, {
+          title: "Alles Gute zum Geburtstag, " + b.name + "!",
+          body: (age ? "Herzlichen Glückwunsch zum " + age + ". " : "") + "Die ganze Partykeller Gruppe stößt auf dich an.",
+          url: "./#chat", tag: "bday-own-" + b.id,
+        })).sent;
+        // Alle anderen: Hinweis mit Weg in den Chat
+        const others = await subsFor((s) => s.member_id !== b.id);
+        total += (await send(others, {
+          title: "Heute hat " + b.name + " Geburtstag!",
+          body: (age ? b.name + " wird heute " + age + ". " : "") + "Gratulier im Chat.",
+          url: "./#chat", tag: "bday-" + b.id,
+        })).sent;
+      }
+      return Response.json({ birthdays: kids.length, names: joinNames(kids.map((k) => k.name)), sent: total });
     }
     return new Response("Unbekannter Typ", { status: 400 });
   } catch (err) {

@@ -125,6 +125,13 @@ async function load(myId = me?.id) {
   await loadNews();
   await loadSongs();
   await loadPhotos();
+  await loadBirthdays();
+}
+async function loadBirthdays() {
+  const { data, error } = await db.from("members").select("id,bday_day,bday_month,bday_year");
+  // Spalten gibt es erst nach geburtstag.sql
+  S.bdayReady = !error;
+  for (const b of data || []) Object.assign(S.members.find(m => m.id === b.id) || {}, b);
 }
 async function loadPhotos() {
   const { data, error } = await db.from("event_photos").select("*").order("id");
@@ -152,7 +159,7 @@ const nameOf = id => S.members.find(m => m.id === id)?.name || "Ehemaliges Mitgl
 const canDelete = createdBy => me && (createdBy === me.id || me.is_admin);
 
 /* ---------- Anzeige ---------- */
-function render() { renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderNews(); renderStart(); }
+function render() { renderBirthdays(); renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderNews(); renderStart(); }
 
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;
@@ -160,7 +167,7 @@ function renderMembers() {
   $("#menu-gruppe-sub").textContent = `${S.members.length} Leute, ${joined} eingeloggt`;
   $("#members").innerHTML = S.members.map(m => `<div class="member${m.user_id ? "" : " away"}${m.id === me.id ? " mine" : ""}" data-id="${m.id}">
     <div class="av">${esc(m.name[0])}</div>
-    <div class="txt"><strong>${esc(m.name)}</strong><span class="${m.bio ? "bio" : ""}">${esc(m.bio || (m.user_id ? "Steckbrief folgt" : "noch nicht dabei"))}</span></div></div>`).join("");
+    <div class="txt"><strong>${esc(m.name)}</strong><span class="${m.bio ? "bio" : ""}">${esc(m.bio || (m.user_id ? "Steckbrief folgt" : "noch nicht dabei"))}</span>${m.bday_day ? `<span class="m-bday">Geb. ${m.bday_day}. ${MON[m.bday_month - 1]}</span>` : ""}</div></div>`).join("");
   if (document.activeElement !== $("#bio-input")) $("#bio-input").value = me.bio || "";
   if (presence) renderStatus();
 }
@@ -1559,6 +1566,7 @@ function renderStart() {
   const hour = new Date().getHours();
   const hello = hour < 11 ? "Moin" : hour < 18 ? "Hey" : "Guten Abend";
   let html = `<p class="hello">${hello}, <b>${esc(me.name)}</b></p>`;
+  html += startBirthday();
 
   // Neu in der App (solange ungelesen)
   const fresh = S.newsReady ? unreadNews() : [];
@@ -1636,6 +1644,8 @@ document.addEventListener("click", async e => {
   if (a === "new-close") return closeNew();
   if (a === "start-new-event") { showView("termine"); setTermSub("treffen"); return openNew("event"); }
   if (a === "logout") return logout();
+  if (a === "bday-clear") return run(db.rpc("set_my_birthday", { p_day: null, p_month: null, p_year: null }), "Geburtstag entfernt");
+  if (a === "bday-chat") return congratulate(+t.dataset.id);
   if (a === "push-toggle") return togglePush();
   if (a === "recheck") return boot();
   if (a && a.startsWith("prost-")) return prostAction(a);
@@ -1756,3 +1766,111 @@ window.addEventListener("hashchange", () => {
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 db.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") show("login"); });
 boot();
+
+/* ---------- Geburtstage ---------- */
+// Naechster Geburtstag ab heute (29.02. wird in normalen Jahren am 28.02. gefeiert)
+const isLeap = y => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+function nextBirthday(m) {
+  const t = today(), y0 = +t.slice(0, 4);
+  for (const y of [y0, y0 + 1]) {
+    const d = m.bday_month === 2 && m.bday_day === 29 && !isLeap(y) ? 28 : m.bday_day;
+    const iso = `${y}-${String(m.bday_month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (iso >= t) return { iso, days: daysUntil(iso), age: m.bday_year ? y - m.bday_year : null };
+  }
+}
+const withBirthday = () => S.members.filter(m => m.bday_day && m.bday_month)
+  .map(m => ({ m, ...nextBirthday(m) })).sort((a, b) => a.days - b.days || a.m.name.localeCompare(b.m.name));
+
+function fillDaySelects(daySel, monSel) {
+  if (daySel.options.length) return;
+  daySel.innerHTML = `<option value="">Tag</option>` + Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}.</option>`).join("");
+  const LONG = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  monSel.innerHTML = `<option value="">Monat</option>` + LONG.map((n, i) => `<option value="${i + 1}">${n}</option>`).join("");
+}
+
+function renderBirthdays() {
+  const ready = !!S.bdayReady;
+  $("#bday-section").hidden = !ready;
+  $("#bday-form").hidden = !ready;
+  $("#admin-bday").hidden = !ready || !me?.is_admin;
+  if (!ready) return;
+
+  // Liste unter Gruppe
+  const list = withBirthday(), missing = S.members.length - list.length;
+  $("#bday-lead").textContent = list.length
+    ? `Der Nächste zuerst.${missing ? ` ${missing} ${missing === 1 ? "fehlt" : "fehlen"} noch, eintragen unter Einstellungen.` : ""}`
+    : "Noch hat niemand seinen Geburtstag eingetragen. Das geht unter Mehr und Einstellungen.";
+  $("#bdays").innerHTML = list.map(({ m, iso, days, age }) => `<li class="bday${days === 0 ? " today" : days <= 7 ? " soon" : ""}${m.id === me.id ? " mine" : ""}">
+    <span class="bd-date"><b>${+iso.slice(8)}.</b><small>${MON[+iso.slice(5, 7) - 1]}</small></span>
+    <span class="bd-txt"><strong>${esc(m.name)}</strong><small>${age ? `wird ${age}` : "Geburtstag"}</small></span>
+    <span class="bd-count">${countdown(days)}</span></li>`).join("");
+
+  // Eigener Geburtstag in den Einstellungen
+  fillDaySelects($("#bday-day"), $("#bday-month"));
+  const f = $("#bday-form");
+  if (!f.contains(document.activeElement)) {
+    $("#bday-day").value = me.bday_day || ""; $("#bday-month").value = me.bday_month || ""; $("#bday-year").value = me.bday_year || "";
+  }
+  $("#bday-clear").hidden = !me.bday_day;
+
+  // Admin: fuer andere eintragen
+  if (me.is_admin) {
+    fillDaySelects($("#abday-day"), $("#abday-month"));
+    const sel = $("#abday-member"), keep = sel.value;
+    sel.innerHTML = `<option value="">Mitglied wählen …</option>` + [...S.members].sort((a, b) => a.name.localeCompare(b.name))
+      .map(m => `<option value="${m.id}">${esc(m.name)}${m.bday_day ? ` · ${m.bday_day}. ${MON[m.bday_month - 1]}` : ""}</option>`).join("");
+    sel.value = keep;
+  }
+}
+
+// Startseite: heute Geburtstag oder bald (7 Tage)
+function startBirthday() {
+  if (!S.bdayReady) return "";
+  const list = withBirthday(), now = list.filter(b => b.days === 0), soon = list.filter(b => b.days > 0 && b.days <= 7);
+  let html = "";
+  const mineToday = now.find(b => b.m.id === me.id);
+  if (mineToday) {
+    html += `<section class="sblock s-bday s-bday-me"><p class="bd-big">Alles Gute zum Geburtstag, ${esc(me.name)}!</p><p class="muted">${mineToday.age ? `Herzlichen Glückwunsch zum ${mineToday.age}. ` : ""}Die ganze Partykeller Gruppe stößt auf dich an.</p></section>`;
+  }
+  const others = now.filter(b => b.m.id !== me.id);
+  if (others.length) {
+    html += startBlock("Heute Geburtstag", "gruppe", others.map(({ m, age }) => `<div class="s-bday-row">
+      <span class="av">${esc(m.name[0])}</span><span class="bd-txt"><b>${esc(m.name)}</b><small>${age ? `wird heute ${age}` : "hat heute Geburtstag"}</small></span>
+      <button class="btn" type="button" data-action="bday-chat" data-id="${m.id}">Gratulieren</button></div>`).join(""), "s-bday");
+  }
+  if (soon.length) {
+    html += startBlock("Bald Geburtstag", "gruppe", `<ul class="s-bday-soon">${soon.map(({ m, days, age }) =>
+      `<li><b>${esc(m.id === me.id ? "Du" : m.name)}</b><span>${countdown(days)}${age ? ` · wird ${age}` : ""}</span></li>`).join("")}</ul>`);
+  }
+  return html;
+}
+
+// Im Chat gratulieren: Chat oeffnen und Glueckwunsch vorschreiben
+function congratulate(id) {
+  const m = S.members.find(x => x.id === id); if (!m) return;
+  showView("chat");
+  const inp = $("#chat-input");
+  inp.value = `@${m.name} Alles Gute zum Geburtstag! `;
+  inp.dispatchEvent(new Event("input", { bubbles: true }));
+  setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 50);
+}
+
+function readBday(dayEl, monEl, yearEl) {
+  const d = +dayEl.value || null, mo = +monEl.value || null, y = +yearEl.value || null;
+  if (!d || !mo) { toast("Bitte Tag und Monat wählen", true); return null; }
+  if (y && (y < 1940 || y > 2030)) { toast("Das Jahr sieht nicht richtig aus", true); return null; }
+  return { p_day: d, p_month: mo, p_year: y };
+}
+$("#bday-form").addEventListener("submit", e => {
+  e.preventDefault(); document.activeElement?.blur();
+  const v = readBday($("#bday-day"), $("#bday-month"), $("#bday-year")); if (!v) return;
+  run(db.rpc("set_my_birthday", v), "Geburtstag gespeichert");
+});
+$("#admin-bday-form").addEventListener("submit", async e => {
+  e.preventDefault(); document.activeElement?.blur();
+  const target = +$("#abday-member").value; if (!target) return toast("Bitte ein Mitglied wählen", true);
+  const v = readBday($("#abday-day"), $("#abday-month"), $("#abday-year")); if (!v) return;
+  if (await run(db.rpc("set_member_birthday", { target_member: target, ...v }), `Geburtstag für ${nameOf(target)} gespeichert`)) {
+    $("#abday-member").value = ""; $("#abday-day").value = ""; $("#abday-month").value = ""; $("#abday-year").value = "";
+  }
+});

@@ -537,3 +537,38 @@ details.guide ol:last-child{padding-bottom:16px}
 .pv-bar .chip{font-size:1.4rem;padding:0}
 .pv-bar .chip:disabled{opacity:.3}
 .pv-bar .link{padding:10px 4px}
+
+/* ---------- Geburtstage ---------- */
+.member .m-bday{color:var(--amber);font-size:.75rem}
+.bdays{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.bday{display:flex;align-items:center;gap:12px;background:var(--wood-2);border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:0}
+.bday.mine{border-color:var(--amber)}
+.bday.soon{border-color:var(--teal)}
+.bday.today{border-color:var(--pink);box-shadow:0 0 16px rgba(255,79,163,.25)}
+.bd-date{flex:none;width:44px;text-align:center;line-height:1.1}
+.bd-date b{display:block;font-family:var(--font-head);font-weight:400;font-size:1.25rem;color:var(--amber)}
+.bday.today .bd-date b{color:var(--pink);text-shadow:0 0 8px var(--pink)}
+.bd-date small{color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.08em}
+.bd-txt{flex:1;min-width:0}
+.bd-txt strong,.bd-txt b{display:block;overflow-wrap:anywhere}
+.bd-txt small{display:block;color:var(--muted);font-size:.8rem}
+.bd-count{flex:none;color:var(--teal);font-size:.85rem;white-space:nowrap}
+.bday.today .bd-count{color:var(--pink);font-weight:600}
+.bday-form{display:grid;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+#admin-bday .bday-form{margin-top:0;padding-top:0;border-top:0}
+.bday-form h3{margin:0}
+.bday-fields{display:grid;grid-template-columns:5.5rem 1fr;gap:8px}
+.bday-fields input{grid-column:1 / -1}
+.bday-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.bday-hint{margin:0;font-size:.82rem}
+.sblock.s-bday{border-color:var(--pink);background:linear-gradient(135deg,rgba(255,79,163,.14),var(--wood-2) 60%)}
+.s-bday-row{display:flex;align-items:center;gap:10px;padding:4px 0}
+.s-bday-row + .s-bday-row{border-top:1px solid var(--line);padding-top:10px;margin-top:6px}
+.s-bday-row .av{background:var(--pink)}
+.s-bday-row .btn{flex:none}
+.s-bday-me{text-align:center}
+.bd-big{font-family:var(--font-head);font-size:1.3rem;margin:4px 0;color:var(--pink);text-shadow:0 0 8px var(--pink),0 0 22px rgba(255,79,163,.5);text-wrap:balance}
+.s-bday-me .muted{margin:0}
+.s-bday-soon{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.s-bday-soon li{display:flex;justify-content:space-between;gap:10px}
+.s-bday-soon span{color:var(--teal);font-size:.88rem;text-align:right}
