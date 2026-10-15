@@ -1,5 +1,5 @@
 // Partykeller: kleiner Service Worker. Holt die Seite immer frisch, faellt offline auf den letzten Stand zurueck.
-const CACHE = 'partykeller-v5';
+const CACHE = 'partykeller-v6';
 const SUPABASE_URL = 'https://txucqslsykzfhwugdolt.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_60QG69Q7CZ6Ai0qrGePH6w_sMXGaSdT';
 self.addEventListener('install', e => self.skipWaiting());

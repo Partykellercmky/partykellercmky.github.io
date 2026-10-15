@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&family=Caveat:wght@500&display=swap">
-<link rel="stylesheet" href="style.css?v=18">
+<link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 <div class="wrap">
@@ -136,6 +136,7 @@
         <details class="guide"><summary><span><b>Prost</b><small>Der Gruppe sagen, dass du gerade was trinkst.</small></span></summary><ol><li>Unten in der Mitte auf Prost und dann auf den großen Knopf tippen</li><li>Getränk wählen, optional Ort und Standort, dann Prost rufen</li><li>Jedes weitere Getränk in der Strichliste antippen</li><li>Wenn jemand anders Prost ruft: mit „Ich komme!“ oder „Prost!“ antworten</li><li>Bei „Ich komme!“ kannst du deinen Standort teilen. Vor Ort auf „Bin angekommen“ tippen</li></ol><p class="guide-tip">Wer Prost ruft, schickt allen eine Benachrichtigung. Das kannst du unter Einstellungen ausschalten.</p></details>
         <details class="guide"><summary><span><b>Chat</b><small>Mit der ganzen Gruppe schreiben.</small></span></summary><ol><li>Nachricht antippen: Reaktion, Antworten, Kopieren oder Bearbeiten</li><li>Eine Nachricht nach rechts wischen, um direkt zu antworten</li><li>Mit @Name jemanden erwähnen, mit @alle die ganze Gruppe</li><li>Links auf psst tippen und eine Person wählen, um zu flüstern. Das sehen nur ihr beide</li></ol><p class="guide-tip">Benachrichtigungen für den Chat schaltest du unter Einstellungen an oder aus.</p></details>
         <details class="guide"><summary><span><b>Wall of Fame</b><small>König am Glas, Zitate und Rankings.</small></span></summary><ol><li>Unter Mehr auf Wall of Fame tippen</li><li>König am Glas: wer am meisten getrunken hat, für 7 Tage, Monat oder Jahr</li><li>Zitate: auf „Neues Zitat“ tippen, Spruch eintragen und auswählen, wer es gesagt hat</li><li>Rankings: eine Frage anlegen, zum Beispiel „Wer kommt immer zu spät?“, und eine Person wählen</li></ol></details>
+        <details class="guide"><summary><span><b>Snaps</b><small>Bilder, die man nur einmal sieht.</small></span></summary><ol><li>Unten auf Snaps tippen</li><li>„Foto aufnehmen“ öffnet die Kamera, „Aus Galerie“ deine Fotos</li><li>Optional einen Text aufs Bild schreiben</li><li>Empfänger antippen oder „Alle“ wählen und auf „Snap schicken“ tippen</li><li>Bei „Für dich“ einen neuen Snap antippen. Er ist 10 Sekunden zu sehen, dann ist er weg</li><li>Bei „Gesendet“ siehst du, wer deinen Snap schon angesehen hat</li></ol><p class="guide-tip">Jeder Snap lässt sich nur einmal öffnen und löscht sich danach, spätestens nach 24 Stunden. Abfotografieren oder Screenshots kann die App nicht verhindern, also schick nichts, was nicht rumgehen darf.</p></details>
         <details class="guide"><summary><span><b>Memories</b><small>Die Bilderwand im Keller.</small></span></summary><ol><li>Unter Mehr auf Memories tippen</li><li>Ein Bild antippen, um es groß zu sehen. Wischen oder die Pfeile zeigen das nächste</li><li>Unter dem Bild mit Herz, Lachen oder Prost reagieren. Nochmal tippen nimmt es zurück</li><li>Auf Speichern tippen, um das Bild in deine Galerie zu holen</li><li class="admin-only">Nur für Admins: auf „Fotos auswählen“ tippen, mehrere Fotos wählen, eine Bildunterschrift dazuschreiben und „An die Wand hängen“</li><li class="admin-only">Nur für Admins: in der großen Ansicht Text ändern, anpinnen (höchstens 3) oder löschen</li></ol><p class="guide-tip">Jedes Bild bleibt 2 Monate hängen und löscht sich dann von selbst, damit Speicherplatz frei bleibt. Unten am Bild steht, wie lange noch. Angepinnte Bilder bleiben für immer.</p></details>
         <details class="guide"><summary><span><b>Geburtstage</b><small>Eintragen und niemanden mehr vergessen.</small></span></summary><ol><li>Unter Mehr auf Einstellungen tippen</li><li>Bei „Dein Geburtstag“ Tag und Monat wählen. Das Jahr ist freiwillig</li><li>Auf Speichern tippen</li><li>Unter Mehr und Gruppe siehst du, wer als Nächstes Geburtstag hat</li></ol><p class="guide-tip">Am Abend vorher kommt eine Erinnerung, am Geburtstag morgens eine Benachrichtigung an alle. Das Geburtstagskind bekommt einen eigenen Glückwunsch.</p></details>
         <details class="guide"><summary><span><b>Neues und Wünsche</b><small>Neue Funktionen und eigene Ideen.</small></span></summary><ol><li>Unter Mehr auf Neues tippen, um zu sehen, was neu in der App ist</li><li>Im Reiter Wünsche eine eigene Idee eintragen</li><li>Bei den Ideen der anderen mit Daumen hoch abstimmen</li></ol></details>
@@ -162,6 +163,7 @@
         <label class="switch-row" id="chat-push-row" for="chat-push" hidden><input type="checkbox" id="chat-push"> Auch bei neuen Chat-Nachrichten</label>
         <label class="switch-row" id="prost-push-row" for="prost-push" hidden><input type="checkbox" id="prost-push"> Wenn jemand Prost ruft</label>
         <label class="switch-row" id="mem-push-row" for="mem-push" hidden><input type="checkbox" id="mem-push"> Bei neuen Memories</label>
+        <label class="switch-row" id="snap-push-row" for="snap-push" hidden><input type="checkbox" id="snap-push"> Bei neuen Snaps</label>
       </section>
       <section id="install-card" class="card install settings-card" hidden>
         <div><b>Als App aufs Handy</b><p id="install-text"></p></div>
@@ -334,6 +336,25 @@
       </div>
     </div>
 
+    <div id="view-snaps" class="view" hidden>
+      <section id="snap-setup" class="card" hidden><p class="muted">Snaps sind noch nicht eingerichtet. Gerrit muss dafür einmal snaps.sql in Supabase ausführen.</p></section>
+      <div id="snap-main">
+        <div class="snap-actions">
+          <label class="btn snap-shoot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 6.5l1.2-2h4.6l1.2 2H19a1.5 1.5 0 0 1 1.5 1.5v10A1.5 1.5 0 0 1 19 19.5H5A1.5 1.5 0 0 1 3.5 18V8A1.5 1.5 0 0 1 5 6.5z"/><circle cx="12" cy="12.8" r="3.6"/></svg>Foto aufnehmen<input type="file" accept="image/*" capture="environment" hidden id="snap-cam"></label>
+          <label class="btn ghost snap-gal">Aus Galerie<input type="file" accept="image/*" hidden id="snap-gal"></label>
+        </div>
+        <section>
+          <h2>Für dich</h2>
+          <div class="snap-list" id="snap-inbox"></div>
+        </section>
+        <section>
+          <h2>Gesendet</h2>
+          <div class="snap-list" id="snap-sent"></div>
+        </section>
+        <p class="muted snap-hint">Jeder Snap lässt sich nur einmal für 10 Sekunden ansehen und löscht sich danach, spätestens nach 24 Stunden. Abfotografieren oder Screenshots kann die App aber nicht verhindern.</p>
+      </div>
+    </div>
+
     <div id="view-memories" class="view" hidden>
       <section id="mem-setup" class="card" hidden><p class="muted">Memories sind noch nicht eingerichtet. Gerrit muss dafür einmal memories.sql in Supabase ausführen.</p></section>
       <section id="mem-upload" class="card mem-upload" hidden>
@@ -436,6 +457,7 @@
   <button role="tab" data-tab="termine" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg><span>Termine</span></button>
   <button role="tab" data-tab="prost" aria-selected="false" class="prost-tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h9v11.5a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 6 18.5z"/><path d="M15 9.5h1.8a2 2 0 0 1 2 2v2.5a2 2 0 0 1-2 2H15"/><path d="M6 7c0-2 1.6-3 3-2.4C10 3.3 12.5 3.4 13.3 5 15 4.6 16 6 15 7"/><path d="M9 11v5.5M12 11v5.5"/></svg><span>Prost</span><span class="badge" id="prost-badge" hidden></span></button>
   <button role="tab" data-tab="chat" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17.5l-1.5 3 4-1.5c1.3.6 2.9 1 4.5 1 4.7 0 8.5-3.2 8.5-7.2S16.7 5.6 12 5.6 3.5 8.8 3.5 12.8c0 1.8.5 3.3 1.5 4.7z"/></svg><span>Chat</span><span class="badge" id="chat-badge" hidden></span></button>
+  <button role="tab" data-tab="snaps" aria-selected="false" class="snap-tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 6.5l1.2-2h4.6l1.2 2H19a1.5 1.5 0 0 1 1.5 1.5v10A1.5 1.5 0 0 1 19 19.5H5A1.5 1.5 0 0 1 3.5 18V8A1.5 1.5 0 0 1 5 6.5z"/><circle cx="12" cy="12.8" r="3.6"/></svg><span>Snaps</span><span class="badge" id="snap-badge" hidden></span></button>
   <button role="tab" data-tab="mehr" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg><span>Mehr</span><span class="badge" id="more-badge" hidden></span></button>
 </nav>
 <div id="mem-sheet" class="sheet photo-sheet" hidden>
@@ -459,9 +481,26 @@
     </div>
   </div>
 </div>
+<div id="snap-compose" class="sheet snap-sheet" hidden>
+  <form class="sheet-card snap-card" role="dialog" aria-label="Snap schicken" id="snap-form">
+    <div class="snap-prev"><img alt="Vorschau"><span class="snap-cap" hidden></span></div>
+    <input id="snap-caption" maxlength="80" placeholder="Text aufs Bild (freiwillig)" aria-label="Text aufs Bild">
+    <span class="glabel">An wen?</span>
+    <div class="snap-to" id="snap-to"></div>
+    <p class="muted snap-warn">Einmal ansehen, aber abfotografieren lässt sich nicht verhindern.</p>
+    <div class="snap-send-row"><button class="btn" type="submit" id="snap-send">Snap schicken</button><button class="link" type="button" data-action="snap-cancel">Abbrechen</button></div>
+  </form>
+</div>
+<div id="snap-view" class="snap-view" hidden>
+  <div class="sv-bar"><i></i></div>
+  <div class="sv-top"><b class="sv-who"></b><span class="sv-hint">Tippen zum Schließen</span></div>
+  <img alt="Snap">
+  <span class="snap-cap sv-cap" hidden></span>
+  <p class="sv-load">Snap wird geladen …</p>
+</div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>

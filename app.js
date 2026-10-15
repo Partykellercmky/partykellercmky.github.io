@@ -127,6 +127,7 @@ async function load(myId = me?.id) {
   await loadPhotos();
   await loadBirthdays();
   await loadMemories();
+  await loadSnaps();
 }
 async function loadBirthdays() {
   const { data, error } = await db.from("members").select("id,bday_day,bday_month,bday_year");
@@ -160,7 +161,7 @@ const nameOf = id => S.members.find(m => m.id === id)?.name || "Ehemaliges Mitgl
 const canDelete = createdBy => me && (createdBy === me.id || me.is_admin);
 
 /* ---------- Anzeige ---------- */
-function render() { document.body.classList.toggle("is-admin", !!me?.is_admin); renderMemories(); renderBirthdays(); renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderNews(); renderStart(); }
+function render() { document.body.classList.toggle("is-admin", !!me?.is_admin); renderSnaps(); renderMemories(); renderBirthdays(); renderPush(); renderChat(); renderMembers(); renderEvents(); renderPolls(); renderQuotes(); renderRanks(); renderAdmin(); renderInstall(); renderProst(); $("#wsub-king-btn").hidden = !S.prostReady; setWallSub(wallSub); renderNews(); renderStart(); }
 
 function renderMembers() {
   const joined = S.members.filter(m => m.user_id).length;
@@ -536,7 +537,7 @@ async function currentSub() {
 }
 async function renderPush() {
   const card = $("#push-card"), text = $("#push-text"), btn = $("#push-btn");
-  $("#chat-push-row").hidden = true; $("#prost-push-row").hidden = true; $("#mem-push-row").hidden = true;
+  $("#chat-push-row").hidden = true; $("#prost-push-row").hidden = true; $("#mem-push-row").hidden = true; $("#snap-push-row").hidden = true;
   card.hidden = false; btn.hidden = false; card.classList.remove("on");
   if (isIOS && !isStandalone()) { text.textContent = "Leg die App zuerst auf den Home-Bildschirm und öffne sie von dort. Dann kannst du Benachrichtigungen einschalten."; btn.hidden = true; return; }
   if (!pushSupported) { text.textContent = "Dein Browser kann leider keine Benachrichtigungen empfangen."; btn.hidden = true; return; }
@@ -554,14 +555,16 @@ async function renderPush() {
   $("#chat-push-row").hidden = !pushOn;
   $("#prost-push-row").hidden = !pushOn || !S.prostReady;
   $("#mem-push-row").hidden = !pushOn || !S.memReady;
+  $("#snap-push-row").hidden = !pushOn || !S.snapReady;
   if (pushOn) {
     // Spalten "prost" und "memories" gibt es erst nach prost.sql bzw. memories.sql
     let data = null, error = true;
-    for (const cols of ["chat,prost,memories", "chat,prost", "chat"]) {
+    for (const cols of ["chat,prost,memories,snaps", "chat,prost,memories", "chat,prost", "chat"]) {
       ({ data, error } = await db.from("push_subscriptions").select(cols).eq("endpoint", sub.endpoint).maybeSingle());
       if (!error) break;
     }
     $("#mem-push").checked = data ? data.memories !== false : true;
+    $("#snap-push").checked = data ? data.snaps !== false : true;
     $("#chat-push").checked = data ? data.chat !== false : true;
     $("#prost-push").checked = data ? data.prost !== false : true;
   }
@@ -1502,9 +1505,9 @@ async function newsAction(t) {
 }
 
 /* ---------- Navigation: Start, Termine, Prost, Chat, Mehr ---------- */
-const VIEWS = ["start", "termine", "prost", "chat", "mehr", "neues", "gruppe", "wall", "memories", "anleitungen", "einstellungen", "admin"];
+const VIEWS = ["start", "termine", "prost", "chat", "snaps", "mehr", "neues", "gruppe", "wall", "memories", "anleitungen", "einstellungen", "admin"];
 const UNDER_MORE = { neues: 1, gruppe: 1, wall: 1, memories: 1, anleitungen: 1, einstellungen: 1, admin: 1 };
-const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", neues: "Neues", gruppe: "Gruppe", wall: "Wall of Fame", memories: "Memories", anleitungen: "Anleitungen", einstellungen: "Einstellungen", admin: "Admin" };
+const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", neues: "Neues", gruppe: "Gruppe", wall: "Wall of Fame", memories: "Memories", snaps: "Snaps", anleitungen: "Anleitungen", einstellungen: "Einstellungen", admin: "Admin" };
 let currentView = "start";
 function updateHeader() {
   const inApp = !$("#screen-app").hidden;
@@ -1527,6 +1530,7 @@ function showView(name) {
   if (name === "start" && me) renderStart();
   if (name === "neues" && me) markNewsRead();
   if (name === "memories" && me) { markMemSeen(); loadMemThumbs(); }
+  if (name === "snaps" && me) refresh();
   if (name === "chat") { renderChat.done = false; if (S.messages) renderChat(); renderStatus(); }
   else { window.scrollTo({ top: 0 }); closeSheet(); setTyping(false); }
   updateChatBadge();
@@ -1582,6 +1586,7 @@ function renderStart() {
     html += startBlock("Neu in der App", "neues", `<button type="button" class="s-news" data-tab="neues"><b>${esc(n.title)}</b>${n.body ? `<span>${esc(n.body.slice(0, 110))}${n.body.length > 110 ? " …" : ""}</span>` : ""}${fresh.length > 1 ? `<small>und ${fresh.length - 1} ${fresh.length === 2 ? "weitere Neuigkeit" : "weitere Neuigkeiten"}</small>` : ""}</button>`, "s-newsblock");
   }
 
+  html += startSnaps();
   html += startMemory();
 
   // Naechstes Treffen
@@ -1657,6 +1662,9 @@ document.addEventListener("click", async e => {
   if (a === "bday-chat") return congratulate(+t.dataset.id);
   if (t.dataset.mem) return openMem(+t.dataset.mem);
   if (a === "mem-cancel") return resetMemForm();
+  if (a === "snap-cancel") return closeCompose();
+  if (t.dataset.snapopen) return openSnap(+t.dataset.snapopen);
+  if (t.dataset.snapto) return toggleSnapTo(t.dataset.snapto);
   if (a === "push-toggle") return togglePush();
   if (a === "recheck") return boot();
   if (a && a.startsWith("prost-")) return prostAction(a);
@@ -2138,4 +2146,165 @@ $("#mem-push").addEventListener("change", async e => {
   const { error } = await db.rpc("set_push_memories", { p_endpoint: sub.endpoint, p_on: e.target.checked });
   if (error) { e.target.checked = !e.target.checked; return fail(error); }
   toast(e.target.checked ? "Memories-Meldungen an" : "Memories-Meldungen aus");
+});
+
+/* ---------- Snaps (einmal ansehen) ---------- */
+const SNAP_SECONDS = 10;
+async function loadSnaps() {
+  const [sn, rc] = await Promise.all([
+    db.from("snaps").select("id,sender_id,caption,created_at,expires_at").order("created_at", { ascending: false }),
+    db.from("snap_recipients").select("*"),
+  ]);
+  // Tabellen gibt es erst nach snaps.sql
+  S.snapReady = !sn.error;
+  const now = new Date().toISOString();
+  S.snaps = (sn.data || []).filter(x => x.expires_at > now); S.snapRcpt = rc.data || [];
+}
+const rcptOf = id => (S.snapRcpt || []).filter(r => r.snap_id === id);
+const myRcpt = id => (S.snapRcpt || []).find(r => r.snap_id === id && r.member_id === me?.id);
+const inboxSnaps = () => (S.snaps || []).filter(x => x.sender_id !== me?.id && myRcpt(x.id));
+const newSnaps = () => inboxSnaps().filter(x => !myRcpt(x.id).opened_at);
+function ago(iso) {
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (min < 1) return "gerade eben";
+  if (min < 60) return `vor ${min} Min.`;
+  const h = Math.round(min / 60);
+  return h === 1 ? "vor 1 Std." : `vor ${h} Std.`;
+}
+
+function renderSnaps() {
+  const ready = !!S.snapReady;
+  $("#snap-setup").hidden = ready;
+  $("#snap-main").hidden = !ready;
+  const fresh = ready ? newSnaps() : [];
+  const b = $("#snap-badge"); b.hidden = !fresh.length; b.textContent = fresh.length;
+  if (!ready) return;
+
+  // Fuer dich: neue zuerst, angesehene bleiben bis zum Aufraeumen grau stehen
+  const inbox = inboxSnaps().sort((a, b) => (!!myRcpt(a.id).opened_at - !!myRcpt(b.id).opened_at) || b.created_at.localeCompare(a.created_at));
+  $("#snap-inbox").innerHTML = inbox.length ? inbox.map(x => {
+    const opened = !!myRcpt(x.id).opened_at;
+    return `<button type="button" class="snap-item${opened ? " seen" : ""}"${opened ? " disabled" : ` data-snapopen="${x.id}"`}>
+      <span class="snap-sq" aria-hidden="true"></span>
+      <span class="snap-txt"><b>${esc(nameOf(x.sender_id))}</b><small>${opened ? "Angesehen" : "Neuer Snap · Tippen zum Ansehen"} · ${ago(x.created_at)}</small></span></button>`;
+  }).join("") : `<p class="muted snap-empty">Gerade wartet kein Snap auf dich.</p>`;
+
+  // Gesendet: Status pro Empfaenger
+  const sent = (S.snaps || []).filter(x => x.sender_id === me.id);
+  $("#snap-sent").innerHTML = sent.length ? sent.map(x => {
+    const rs = rcptOf(x.id), seen = rs.filter(r => r.opened_at).length;
+    return `<div class="snap-item sent">
+      <span class="snap-sq out" aria-hidden="true"></span>
+      <span class="snap-txt"><b>${rs.length === 1 ? esc(nameOf(rs[0].member_id)) : `An ${rs.length} Leute`}${x.caption ? ` · „${esc(x.caption)}“` : ""}</b>
+      <small>${ago(x.created_at)} · ${seen} von ${rs.length} angesehen</small>
+      ${rs.length > 1 || seen ? `<span class="snap-who">${rs.sort((a, b) => nameOf(a.member_id).localeCompare(nameOf(b.member_id))).map(r => `<span class="${r.opened_at ? "on" : ""}">${esc(nameOf(r.member_id))}${r.opened_at ? " " + fmtTime(r.opened_at) : ""}</span>`).join("")}</span>` : ""}</span></div>`;
+  }).join("") : `<p class="muted snap-empty">Du hast gerade keine Snaps unterwegs.</p>`;
+}
+
+function startSnaps() {
+  if (!S.snapReady) return "";
+  const fresh = newSnaps(); if (!fresh.length) return "";
+  const names = [...new Set(fresh.map(x => nameOf(x.sender_id)))];
+  return startBlock(fresh.length === 1 ? "Neuer Snap" : `${fresh.length} neue Snaps`, "snaps",
+    `<button type="button" class="snap-item" data-snapopen="${fresh[fresh.length - 1].id}"><span class="snap-sq" aria-hidden="true"></span><span class="snap-txt"><b>${esc(names.slice(0, 3).join(", "))}${names.length > 3 ? " und weitere" : ""}</b><small>Tippen zum Ansehen</small></span></button>`, "s-snap");
+}
+
+/* Snap schicken */
+let snapBlob = null, snapTo = new Set();
+function onSnapFile(e) {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  shrink(f, 1280, 0.75).then(blob => {
+    snapBlob = blob; snapTo = new Set();
+    const img = $("#snap-compose img"); if (img.src) URL.revokeObjectURL(img.src); img.src = URL.createObjectURL(blob);
+    $("#snap-caption").value = ""; updateSnapCap();
+    renderSnapTo();
+    $("#snap-compose").hidden = false;
+  }).catch(fail);
+}
+$("#snap-cam").addEventListener("change", onSnapFile);
+$("#snap-gal").addEventListener("change", onSnapFile);
+function closeCompose() { snapBlob = null; $("#snap-compose").hidden = true; }
+function updateSnapCap() {
+  const t = $("#snap-caption").value.trim(), c = $("#snap-compose .snap-cap");
+  c.hidden = !t; c.textContent = t;
+}
+$("#snap-caption").addEventListener("input", updateSnapCap);
+const snapTargets = () => S.members.filter(m => m.user_id && m.id !== me.id).sort((a, b) => a.name.localeCompare(b.name));
+function renderSnapTo() {
+  const all = snapTargets(), isAll = all.length && all.every(m => snapTo.has(m.id));
+  $("#snap-to").innerHTML = `<button type="button" class="chip${isAll ? " on" : ""}" data-snapto="all">Alle</button>` +
+    all.map(m => `<button type="button" class="chip${snapTo.has(m.id) ? " on" : ""}" data-snapto="${m.id}">${esc(m.name)}</button>`).join("");
+  $("#snap-send").textContent = snapTo.size ? `Snap an ${snapTo.size === 1 ? nameOf([...snapTo][0]) : snapTo.size + " Leute"} schicken` : "Snap schicken";
+}
+function toggleSnapTo(v) {
+  const all = snapTargets();
+  if (v === "all") snapTo = all.every(m => snapTo.has(m.id)) ? new Set() : new Set(all.map(m => m.id));
+  else { const id = +v; snapTo.has(id) ? snapTo.delete(id) : snapTo.add(id); }
+  renderSnapTo();
+}
+$("#snap-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!snapBlob) return;
+  if (!snapTo.size) return toast("Wähl mindestens eine Person aus", true);
+  const btn = $("#snap-send"); btn.disabled = true; toast("Snap wird geschickt …");
+  const st = db.storage.from("snaps"), path = `${rid()}.jpg`;
+  try {
+    let r = await st.upload(path, snapBlob, { contentType: "image/jpeg" }); if (r.error) throw r.error;
+    r = await db.from("snaps").insert({ sender_id: me.id, path, caption: $("#snap-caption").value.trim().slice(0, 80) }).select("id").single();
+    if (r.error) { await st.remove([path]); throw r.error; }
+    const id = r.data.id;
+    r = await db.from("snap_recipients").insert([...snapTo].map(m => ({ snap_id: id, member_id: m })));
+    if (r.error) throw r.error;
+    db.rpc("push_snap", { p_id: id }).then(({ error }) => { if (error) console.warn(error); });
+    const n = snapTo.size;
+    closeCompose();
+    toast(n === 1 ? "Snap ist raus" : `Snap ist an ${n} Leute raus`);
+    await refresh();
+  } catch (err) { fail(err); }
+  finally { btn.disabled = false; }
+});
+
+/* Snap ansehen: einmal, 10 Sekunden */
+let snapTimer = null, snapUrl = null;
+async function openSnap(id) {
+  const x = (S.snaps || []).find(s => s.id === id); if (!x) return;
+  const v = $("#snap-view"), img = v.querySelector("img"), bar = v.querySelector(".sv-bar i");
+  v.querySelector(".sv-who").textContent = nameOf(x.sender_id);
+  const cap = v.querySelector(".sv-cap"); cap.hidden = !x.caption; cap.textContent = x.caption || "";
+  img.hidden = true; v.querySelector(".sv-load").hidden = false;
+  bar.style.transition = "none"; bar.style.width = "100%";
+  v.hidden = false;
+  try {
+    const { data: path, error } = await db.rpc("open_snap", { p_id: id });
+    if (error) throw error;
+    const s = await db.storage.from("snaps").createSignedUrl(path, 30);
+    if (s.error) throw s.error;
+    const blob = await (await fetch(s.data.signedUrl)).blob();
+    snapUrl = URL.createObjectURL(blob);
+    await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error("Snap konnte nicht geladen werden")); img.src = snapUrl; });
+    if (v.hidden) return closeSnap();
+    img.hidden = false; v.querySelector(".sv-load").hidden = true;
+    requestAnimationFrame(() => { bar.style.transition = `width ${SNAP_SECONDS}s linear`; bar.style.width = "0%"; });
+    snapTimer = setTimeout(closeSnap, SNAP_SECONDS * 1000);
+  } catch (err) { closeSnap(); fail(err); }
+}
+function closeSnap() {
+  clearTimeout(snapTimer); snapTimer = null;
+  const v = $("#snap-view"), img = v.querySelector("img");
+  v.hidden = true; img.removeAttribute("src");
+  if (snapUrl) { URL.revokeObjectURL(snapUrl); snapUrl = null; }
+  refresh();
+}
+$("#snap-view").addEventListener("click", () => {
+  // Waehrend des Ladens nicht schliessen, sonst waere der Snap verbraucht, ohne dass man ihn gesehen hat
+  if (!$("#snap-view .sv-load").hidden) return;
+  closeSnap();
+});
+$("#snap-view").addEventListener("contextmenu", e => e.preventDefault());
+
+$("#snap-push").addEventListener("change", async e => {
+  const sub = await currentSub(); if (!sub) return;
+  const { error } = await db.rpc("set_push_snaps", { p_endpoint: sub.endpoint, p_on: e.target.checked });
+  if (error) { e.target.checked = !e.target.checked; return fail(error); }
+  toast(e.target.checked ? "Snap-Meldungen an" : "Snap-Meldungen aus");
 });

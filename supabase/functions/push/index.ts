@@ -28,7 +28,7 @@ const berlinDate = (offsetDays: number) => {
 };
 
 type Msg = { title: string; body: string; url: string; tag: string; mid?: number };
-type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; auth: string; chat?: boolean; prost?: boolean; memories?: boolean };
+type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; auth: string; chat?: boolean; prost?: boolean; memories?: boolean; snaps?: boolean };
 
 // Prost: was jemand in der Hand hat
 const DRINKS: Record<string, string> = {
@@ -253,6 +253,34 @@ Deno.serve(async (req) => {
       const { error: de } = await db.from("memories").delete().in("id", old.map((m: { id: number }) => m.id));
       if (de) throw de;
       return Response.json({ deleted: old.length });
+    }
+    if (type === "snap") {
+      const { data: sn, error } = await db.from("snaps").select("sender_id").eq("id", id).maybeSingle();
+      if (error) throw error;
+      if (!sn) return Response.json({ skipped: true, grund: "Snap " + id + " nicht gefunden" });
+      const { data: rs } = await db.from("snap_recipients").select("member_id").eq("snap_id", id);
+      const to = new Set((rs || []).map((r: { member_id: number }) => r.member_id));
+      const { data: who } = await db.from("members").select("name").eq("id", sn.sender_id).maybeSingle();
+      const subs = await subsFor((s) => to.has(s.member_id) && s.snaps !== false);
+      return Response.json(await send(subs, {
+        title: (who?.name || "Jemand") + " hat dir einen Snap geschickt",
+        body: "Einmal ansehen, dann ist er weg.",
+        url: "./#snaps", tag: "snap-" + id,
+      }));
+    }
+    if (type === "snap_cleanup") {
+      // Gesehene und abgelaufene Snaps: Datei und Eintrag loeschen
+      const { data: due, error } = await db.rpc("snaps_due");
+      if (error) throw error;
+      if (!due?.length) return Response.json({ deleted: 0 });
+      const paths = due.map((x: { path: string }) => x.path);
+      for (let i = 0; i < paths.length; i += 100) {
+        const { error: se } = await db.storage.from("snaps").remove(paths.slice(i, i + 100));
+        if (se) throw se;
+      }
+      const { error: de } = await db.from("snaps").delete().in("id", due.map((x: { id: number }) => x.id));
+      if (de) throw de;
+      return Response.json({ deleted: due.length });
     }
     return new Response("Unbekannter Typ", { status: 400 });
   } catch (err) {
