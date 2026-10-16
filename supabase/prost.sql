@@ -22,7 +22,7 @@ create table public.prost_drinks (
   id bigint generated always as identity primary key,
   session_id bigint not null references public.prost_sessions(id) on delete cascade,
   member_id bigint not null references public.members(id) on delete cascade,
-  kind text not null check (kind in ('bier_klein','bier','radler','wein','sekt','longdrink','cocktail','shot','alkfrei','wasser')),
+  kind text not null check (kind in ('bier_klein','bier','mass','radler','wein','sekt','longdrink','cocktail','shot','alkfrei','wasser')),
   created_at timestamptz not null default now()
 );
 create index prost_drinks_session_idx on public.prost_drinks (session_id);

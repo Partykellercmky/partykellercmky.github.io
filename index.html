@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Bungee&family=Karla:wght@400;500;700&family=Caveat:wght@500&display=swap">
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 <div class="wrap">
@@ -81,6 +81,7 @@
         <button type="button" data-tab="gruppe"><span class="mi"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.3 2.8-5 5.5-5s4.9 1.7 5.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.3c2.3.1 4.3 1.6 5 4.7"/></svg></span><span class="mt"><b>Gruppe</b><small id="menu-gruppe-sub">Wer drin ist</small></span></button>
         <button type="button" data-tab="wall"><span class="mi"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0z"/><path d="M7 6H4.5a2.5 2.5 0 0 0 3 3.5M17 6h2.5a2.5 2.5 0 0 1-3 3.5"/><path d="M12 13v4M8.5 20h7M10 17h4"/></svg></span><span class="mt"><b>Wall of Fame</b><small>König am Glas, Zitate, Rankings</small></span></button>
         <button type="button" data-tab="memories" id="menu-memories"><span class="mi"><svg viewBox="0 0 24 24"><rect x="4.5" y="3.5" width="15" height="17" rx="1.5" transform="rotate(-4 12 12)"/><rect x="7" y="6" width="10" height="9" rx=".5" transform="rotate(-4 12 12)"/><path d="M8 13.5l2.5-2.5 2 2 1.5-1.5 2 2" transform="rotate(-4 12 12)"/></svg></span><span class="mt"><b>Memories</b><small id="menu-memories-sub">Bilder an der Kellerwand</small></span><span class="badge" id="mem-badge" hidden></span></button>
+        <button type="button" data-tab="darts" id="menu-darts"><span class="mi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/><path d="M12 12l7-7M16.5 4.5H19.5V7.5"/></svg></span><span class="mt"><b>Dartzähler</b><small id="menu-darts-sub">301 und 501, Punkte zählen</small></span></button>
         <button type="button" data-tab="anleitungen"><span class="mi"><svg viewBox="0 0 24 24"><path d="M5 4.5h5a2 2 0 0 1 2 2V20a1.5 1.5 0 0 0-1.5-1.5H5z"/><path d="M19 4.5h-5a2 2 0 0 0-2 2V20a1.5 1.5 0 0 1 1.5-1.5H19z"/></svg></span><span class="mt"><b>Anleitungen</b><small>So funktioniert die App</small></span></button>
         <button type="button" data-tab="einstellungen"><span class="mi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg></span><span class="mt"><b>Einstellungen</b><small>Benachrichtigungen, Steckbrief, Abmelden</small></span></button>
         <button type="button" data-tab="admin" id="tab-admin" hidden><span class="mi"><svg viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8.2-7.5 9.5-4.3-1.3-7.5-5-7.5-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.3-4.6"/></svg></span><span class="mt"><b>Admin</b><small>Anfragen und Logins</small></span><span class="badge" id="req-badge" hidden></span></button>
@@ -138,6 +139,7 @@
         <details class="guide"><summary><span><b>Wall of Fame</b><small>König am Glas, Zitate und Rankings.</small></span></summary><ol><li>Unter Mehr auf Wall of Fame tippen</li><li>König am Glas: wer am meisten getrunken hat, für 7 Tage, Monat oder Jahr</li><li>Zitate: auf „Neues Zitat“ tippen, Spruch eintragen und auswählen, wer es gesagt hat</li><li>Rankings: eine Frage anlegen, zum Beispiel „Wer kommt immer zu spät?“, und eine Person wählen</li></ol></details>
         <details class="guide"><summary><span><b>Snaps</b><small>Bilder, die man nur einmal sieht.</small></span></summary><ol><li>Unten auf Snaps tippen</li><li>„Foto aufnehmen“ öffnet die Kamera, „Aus Galerie“ deine Fotos</li><li>Optional einen Text aufs Bild schreiben</li><li>Empfänger antippen oder „Alle“ wählen und auf „Snap schicken“ tippen</li><li>Bei „Für dich“ einen neuen Snap antippen. Er ist 10 Sekunden zu sehen, dann ist er weg</li><li>Bei „Gesendet“ siehst du, wer deinen Snap schon angesehen hat</li></ol><p class="guide-tip">Jeder Snap lässt sich nur einmal öffnen und löscht sich danach, spätestens nach 24 Stunden. Abfotografieren oder Screenshots kann die App nicht verhindern, also schick nichts, was nicht rumgehen darf.</p></details>
         <details class="guide"><summary><span><b>Memories</b><small>Die Bilderwand im Keller.</small></span></summary><ol><li>Unter Mehr auf Memories tippen</li><li>Ein Bild antippen, um es groß zu sehen. Wischen oder die Pfeile zeigen das nächste</li><li>Unter dem Bild mit Herz, Lachen oder Prost reagieren. Nochmal tippen nimmt es zurück</li><li>Auf Speichern tippen, um das Bild in deine Galerie zu holen</li><li class="admin-only">Nur für Admins: auf „Fotos auswählen“ tippen, mehrere Fotos wählen, eine Bildunterschrift dazuschreiben und „An die Wand hängen“</li><li class="admin-only">Nur für Admins: in der großen Ansicht Text ändern, anpinnen (höchstens 3) oder löschen</li></ol><p class="guide-tip">Jedes Bild bleibt 2 Monate hängen und löscht sich dann von selbst, damit Speicherplatz frei bleibt. Unten am Bild steht, wie lange noch. Angepinnte Bilder bleiben für immer.</p></details>
+        <details class="guide"><summary><span><b>Dartzähler</b><small>Punkte beim Darts zählen lassen.</small></span></summary><ol><li>Unter Mehr auf Dartzähler tippen</li><li>301, 501 oder 701 wählen und ob mit einem Doppel ausgecheckt werden muss</li><li>Mitspieler antippen, in der Reihenfolge, in der geworfen wird. Gäste ohne App unten mit Namen dazuschreiben</li><li>Pro Pfeil das Feld antippen. Für Doppel oder Triple vorher Double oder Triple antippen</li><li>Daneben ist 0, das Bull ist 25, das Bullseye ist Double und 25</li><li>Vertippt? „Letzten Wurf zurück“ antippen</li></ol><p class="guide-tip">Wer überwirft, bekommt die Aufnahme nicht gezählt. Ab 170 Restpunkten zeigt der Zähler einen Weg zum Auschecken. Das Spiel läuft nur auf deinem Handy und wird nicht gespeichert, wenn es fertig ist.</p></details>
         <details class="guide"><summary><span><b>Geburtstage</b><small>Eintragen und niemanden mehr vergessen.</small></span></summary><ol><li>Unter Mehr auf Einstellungen tippen</li><li>Bei „Dein Geburtstag“ Tag und Monat wählen. Das Jahr ist freiwillig</li><li>Auf Speichern tippen</li><li>Unter Mehr und Gruppe siehst du, wer als Nächstes Geburtstag hat</li></ol><p class="guide-tip">Am Abend vorher kommt eine Erinnerung, am Geburtstag morgens eine Benachrichtigung an alle. Das Geburtstagskind bekommt einen eigenen Glückwunsch.</p></details>
         <details class="guide"><summary><span><b>Neues und Wünsche</b><small>Neue Funktionen und eigene Ideen.</small></span></summary><ol><li>Unter Mehr auf Neues tippen, um zu sehen, was neu in der App ist</li><li>Im Reiter Wünsche eine eigene Idee eintragen</li><li>Bei den Ideen der anderen mit Daumen hoch abstimmen</li></ol></details>
         <details class="guide"><summary><span><b>Wenn etwas nicht klappt</b><small>Die häufigsten Probleme.</small></span></summary><ol><li>Die App ganz schließen und neu öffnen. So lädt sie die neueste Version</li><li>Keine Benachrichtigungen: unter Einstellungen prüfen, ob sie an sind, und in den Handy-Einstellungen erlauben</li><li>Ausgeloggt: mit deiner E-Mail und deinem Passwort wieder einloggen</li><li>Hilft alles nichts: Gerrit Bescheid sagen</li></ol></details>
@@ -355,6 +357,33 @@
       </div>
     </div>
 
+    <div id="view-darts" class="view" hidden>
+      <section id="dart-setup" class="card dart-setup">
+        <span class="glabel">Spiel</span>
+        <div class="seg" role="group" aria-label="Startpunkte">
+          <button type="button" data-dmode="301">301</button><button type="button" data-dmode="501">501</button><button type="button" data-dmode="701">701</button>
+        </div>
+        <span class="glabel">Auschecken</span>
+        <div class="seg" role="group" aria-label="Auschecken">
+          <button type="button" data-dout="0">Single Out</button><button type="button" data-dout="1">Double Out</button>
+        </div>
+        <span class="glabel">Wer spielt mit? <small class="muted" id="dart-order-hint"></small></span>
+        <div class="dart-pick" id="dart-pick"></div>
+        <form class="dart-guest" id="dart-guest"><input id="dart-guest-name" maxlength="20" placeholder="Gast, z. B. Onkel Heinz" aria-label="Name vom Gast"><button class="btn ghost" type="submit">Dazu</button></form>
+        <button class="btn dart-go" type="button" data-daction="start">Spiel starten</button>
+      </section>
+      <section id="dart-game" hidden>
+        <div class="dart-board" id="dart-board"></div>
+        <div class="card dart-now" id="dart-now"></div>
+        <div class="dart-mods" role="group" aria-label="Feld">
+          <button type="button" class="dart-mod" data-dmod="2">Double</button><button type="button" class="dart-mod" data-dmod="3">Triple</button>
+        </div>
+        <div class="dart-pad" id="dart-pad"></div>
+        <div class="dart-foot"><button class="link" type="button" data-daction="undo">Letzten Wurf zurück</button><button class="link danger" type="button" data-daction="quit">Spiel beenden</button></div>
+      </section>
+      <section id="dart-win" class="card dart-win" hidden></section>
+    </div>
+
     <div id="view-memories" class="view" hidden>
       <section id="mem-setup" class="card" hidden><p class="muted">Memories sind noch nicht eingerichtet. Gerrit muss dafür einmal memories.sql in Supabase ausführen.</p></section>
       <section id="mem-upload" class="card mem-upload" hidden>
@@ -501,6 +530,6 @@
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=27"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>

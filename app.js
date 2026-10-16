@@ -1013,7 +1013,7 @@ $("#chat-push").addEventListener("change", async e => {
 
 /* ---------- Prost (wie Beer With Me) ---------- */
 const DRINKS = {
-  bier_klein: { e: "🍺", l: "Bier 0,33", ml: 330 }, bier: { e: "🍺", l: "Bier 0,5", ml: 500 }, radler: { e: "🍋", l: "Radler" }, wein: { e: "🍷", l: "Wein" },
+  bier_klein: { e: "🍺", l: "Bier 0,33", ml: 330 }, bier: { e: "🍺", l: "Bier 0,5", ml: 500 }, mass: { e: "🍻", l: "Maß", ml: 1000 }, radler: { e: "🍋", l: "Radler" }, wein: { e: "🍷", l: "Wein" },
   sekt: { e: "🥂", l: "Sekt" }, longdrink: { e: "🍹", l: "Longdrink" }, cocktail: { e: "🍸", l: "Cocktail" },
   shot: { e: "🥃", l: "Shot" }, alkfrei: { e: "🧃", l: "Alkoholfrei" }, wasser: { e: "💧", l: "Wasser" }
 };
@@ -1504,10 +1504,176 @@ async function newsAction(t) {
   if (t.dataset.wstatus) return run(db.from("wishes").update({ status: t.dataset.s }).eq("id", +t.dataset.wstatus), "Status geändert");
 }
 
+/* ---------- Dartzähler (läuft nur auf dem eigenen Handy, nichts in Supabase) ---------- */
+const DART_KEY = "pk-darts";
+let dartSetup = (() => { try { return JSON.parse(store.get("pk-darts-setup")) || {}; } catch { return {}; } })();
+dartSetup = { mode: dartSetup.mode || 501, dout: dartSetup.dout ?? true, players: dartSetup.players || [] };
+let dartGame = (() => { try { return JSON.parse(store.get(DART_KEY)); } catch { return null; } })();
+let dartMod = 1;
+const saveDartSetup = () => store.set("pk-darts-setup", JSON.stringify(dartSetup));
+const saveDartGame = () => store.set(DART_KEY, dartGame ? JSON.stringify(dartGame) : "");
+const dartLabel = d => d.v === 0 ? "0" : d.v === 25 ? (d.m === 2 ? "Bull" : "25") : (d.m === 3 ? "T" : d.m === 2 ? "D" : "") + d.v;
+
+// Spielstand aus allen Würfen nachrechnen: so ist "zurück" immer genau ein Pfeil
+function dartReplay(g) {
+  const n = g.players.length, rem = g.players.map(() => g.mode);
+  const st = g.players.map(() => ({ pts: 0, darts: 0, best: 0, busts: 0 }));
+  let cur = g.start % n, turn = [], turnStart = rem[cur], winner = null, lastTurn = null;
+  const next = () => { cur = (cur + 1) % n; turn = []; turnStart = rem[cur]; };
+  for (const d of g.darts) {
+    turn.push(d);
+    const left = rem[cur] - d.v * d.m;
+    const bust = left < 0 || (g.dout && left === 1) || (g.dout && left === 0 && d.m !== 2);
+    if (bust) { rem[cur] = turnStart; st[cur].darts += turn.length; st[cur].busts++; lastTurn = { p: cur, darts: turn, bust: true }; next(); continue; }
+    rem[cur] = left;
+    if (left === 0 || turn.length === 3) {
+      const sum = turnStart - left; st[cur].pts += sum; st[cur].darts += turn.length; st[cur].best = Math.max(st[cur].best, sum);
+      lastTurn = { p: cur, darts: turn, sum };
+      if (left === 0) { winner = cur; break; }
+      next();
+    }
+  }
+  return { rem, st, cur, turn, turnStart, winner, lastTurn };
+}
+
+// Weg zum Auschecken: möglichst wenige Pfeile, beliebte Doppel bevorzugt
+const DART_ALL = (() => {
+  const a = [];
+  for (let v = 20; v >= 1; v--) a.push({ v, m: 3 });
+  a.push({ v: 25, m: 2 }, { v: 25, m: 1 });
+  for (let v = 20; v >= 1; v--) a.push({ v, m: 1 });
+  for (let v = 20; v >= 1; v--) a.push({ v, m: 2 });
+  return a;
+})();
+const DOUBLE_RANK = [20, 16, 18, 12, 10, 8, 25, 14, 6, 4, 2, 19, 17, 15, 13, 11, 9, 7, 5, 3, 1];
+const checkoutCache = new Map();
+function dartCheckout(score, darts, dout) {
+  const key = score + "|" + darts + "|" + dout;
+  if (checkoutCache.has(key)) return checkoutCache.get(key);
+  let best = null, bestRank = Infinity;
+  const finals = dout ? DART_ALL.filter(d => d.m === 2) : DART_ALL;
+  const rank = d => dout ? DOUBLE_RANK.indexOf(d.v) : (d.m === 1 ? 0 : d.m === 2 ? 1 : 2);
+  for (let k = 1; k <= darts && !best; k++) {
+    const walk = (left, path) => {
+      if (path.length === k - 1) {
+        for (const f of finals) if (f.v * f.m === left) { const r = rank(f); if (r < bestRank) { bestRank = r; best = [...path, f]; } }
+        return;
+      }
+      for (const d of DART_ALL) { const s = d.v * d.m; if (s < left) walk(left - s, [...path, d]); }
+    };
+    if (score <= 60 * k) walk(score, []);
+  }
+  checkoutCache.set(key, best);
+  return best;
+}
+
+function renderDartSetup() {
+  $$("[data-dmode]").forEach(b => b.classList.toggle("on", +b.dataset.dmode === dartSetup.mode));
+  $$("[data-dout]").forEach(b => b.classList.toggle("on", (b.dataset.dout === "1") === dartSetup.dout));
+  const sel = dartSetup.players;
+  const pos = key => sel.findIndex(p => p.key === key);
+  const members = (S.members || []).filter(m => m.user_id || m.id === me?.id);
+  const guests = sel.filter(p => p.key.startsWith("g:"));
+  $("#dart-pick").innerHTML = [...members.map(m => ({ key: "m" + m.id, name: m.name })), ...guests].map(p => {
+    const i = pos(p.key);
+    return `<button type="button" class="chip dart-chip${i >= 0 ? " on" : ""}" data-dplayer="${esc(p.key)}" data-dname="${esc(p.name)}" aria-pressed="${i >= 0}">${i >= 0 ? `<b>${i + 1}</b>` : ""}${esc(p.name)}</button>`;
+  }).join("");
+  $("#dart-order-hint").textContent = sel.length ? `(${sel.length} dabei, Zahl = Reihenfolge)` : "(antippen in Wurf-Reihenfolge)";
+  $("[data-daction=start]").disabled = !sel.length;
+}
+
+function renderDarts() {
+  if (!me) return;
+  const g = dartGame;
+  $("#dart-setup").hidden = !!g;
+  $("#dart-game").hidden = !g;
+  $("#dart-win").hidden = true;
+  $("#menu-darts-sub").textContent = g ? `Spiel läuft: ${g.mode}, ${g.players.length} Spieler` : "301 und 501, Punkte zählen";
+  if (!g) return renderDartSetup();
+  const r = dartReplay(g);
+  if (r.winner !== null) { $("#dart-game").hidden = true; return renderDartWin(g, r); }
+  const avg = s => s.darts ? (s.pts / s.darts * 3).toLocaleString("de-DE", { maximumFractionDigits: 1 }) : "–";
+  $("#dart-board").innerHTML = g.players.map((p, i) => `<div class="dart-p${i === r.cur ? " now" : ""}"><span class="dp-name">${esc(p.name)}</span><b>${r.rem[i]}</b><small>Schnitt ${avg(r.st[i])}</small></div>`).join("");
+  const p = g.players[r.cur], left = 3 - r.turn.length, sum = r.turnStart - r.rem[r.cur];
+  const co = r.rem[r.cur] <= 170 ? dartCheckout(r.rem[r.cur], left, g.dout) : null;
+  const slots = [0, 1, 2].map(i => r.turn[i] ? `<span class="ds">${dartLabel(r.turn[i])}</span>` : `<span class="ds empty">${i + 1}</span>`).join("");
+  const last = r.lastTurn && r.turn.length === 0 ? `<p class="dart-last">${esc(g.players[r.lastTurn.p].name)}: ${r.lastTurn.darts.map(dartLabel).join(" · ")} ${r.lastTurn.bust ? "<em>überworfen, zählt nicht</em>" : `= ${r.lastTurn.sum}`}</p>` : "";
+  $("#dart-now").innerHTML = `<div class="dn-head"><span>${esc(p.name)} wirft</span><span class="count">Aufnahme ${sum}</span></div>
+    <div class="dn-rest">${r.rem[r.cur]}</div>
+    <div class="dn-slots">${slots}</div>
+    ${co ? `<p class="dn-co">Auschecken: <b>${co.map(dartLabel).join(" · ")}</b></p>` : ""}${last}`;
+  $$("[data-dmod]").forEach(b => b.classList.toggle("on", +b.dataset.dmod === dartMod));
+  const nums = Array.from({ length: 20 }, (_, i) => i + 1);
+  $("#dart-pad").innerHTML = nums.map(v => `<button type="button" data-dv="${v}">${dartMod === 3 ? "T" : dartMod === 2 ? "D" : ""}${v}</button>`).join("")
+    + `<button type="button" data-dv="25" class="bull"${dartMod === 3 ? " disabled" : ""}>${dartMod === 2 ? "Bull" : "25"}</button><button type="button" data-dv="0" class="miss">0</button>`;
+}
+
+function renderDartWin(g, r) {
+  const w = g.players[r.winner];
+  const avg = s => s.darts ? (s.pts / s.darts * 3).toLocaleString("de-DE", { maximumFractionDigits: 1 }) : "–";
+  const order = g.players.map((p, i) => ({ p, i })).sort((a, b) => a.i === r.winner ? -1 : b.i === r.winner ? 1 : r.rem[a.i] - r.rem[b.i]);
+  const box = $("#dart-win"); box.hidden = false;
+  box.innerHTML = `<p class="dw-crown">Game Shot</p><h2>${esc(w.name)} hat gewonnen</h2>
+    <p class="count">Ausgecheckt mit ${r.lastTurn.darts.map(dartLabel).join(" · ")} · ${r.st[r.winner].darts} Pfeile</p>
+    <ol class="dw-list">${order.map(({ p, i }) => `<li><span>${esc(p.name)}</span><span class="count">${i === r.winner ? "fertig" : r.rem[i] + " Rest"} · Schnitt ${avg(r.st[i])} · beste Aufnahme ${r.st[i].best}</span></li>`).join("")}</ol>
+    <div class="dw-acts"><button class="btn" type="button" data-daction="again">Nochmal</button><button class="btn ghost" type="button" data-daction="new">Neues Spiel</button></div>
+    <button class="link" type="button" data-daction="undo">Letzten Wurf zurück</button>`;
+}
+
+function dartThrow(v) {
+  if (!dartGame) return;
+  if (dartReplay(dartGame).winner !== null) return;
+  let m = dartMod;
+  if (v === 0) m = 1;
+  if (v === 25 && m === 3) return;
+  dartGame.darts.push({ v, m });
+  dartMod = 1;
+  saveDartGame(); renderDarts();
+  if (navigator.vibrate) try { navigator.vibrate(15); } catch {}
+}
+
+$("#view-darts").addEventListener("click", e => {
+  const t = e.target.closest("button"); if (!t) return;
+  e.stopPropagation();
+  if (t.dataset.dmode) { dartSetup.mode = +t.dataset.dmode; saveDartSetup(); return renderDartSetup(); }
+  if (t.dataset.dout) { dartSetup.dout = t.dataset.dout === "1"; saveDartSetup(); return renderDartSetup(); }
+  if (t.dataset.dplayer) {
+    const key = t.dataset.dplayer, i = dartSetup.players.findIndex(p => p.key === key);
+    if (i >= 0) dartSetup.players.splice(i, 1);
+    else if (dartSetup.players.length >= 8) return toast("Mehr als 8 Spieler gehen nicht.");
+    else dartSetup.players.push({ key, name: t.dataset.dname });
+    saveDartSetup(); return renderDartSetup();
+  }
+  if (t.dataset.dmod) { dartMod = dartMod === +t.dataset.dmod ? 1 : +t.dataset.dmod; return renderDarts(); }
+  if (t.dataset.dv) return dartThrow(+t.dataset.dv);
+  const a = t.dataset.daction;
+  if (a === "start") {
+    if (!dartSetup.players.length) return toast("Wähl erst aus, wer mitspielt.", true);
+    dartGame = { mode: dartSetup.mode, dout: dartSetup.dout, players: dartSetup.players.map(p => ({ ...p })), start: 0, darts: [] };
+    dartMod = 1; saveDartGame(); return renderDarts();
+  }
+  if (a === "undo") { if (dartGame?.darts.length) { dartGame.darts.pop(); saveDartGame(); renderDarts(); } return; }
+  if (a === "again") { dartGame = { ...dartGame, start: (dartGame.start + 1) % dartGame.players.length, darts: [] }; dartMod = 1; saveDartGame(); return renderDarts(); }
+  if (a === "new") { dartGame = null; saveDartGame(); return renderDarts(); }
+  if (a === "quit") {
+    if (t.dataset.sure !== "1") { t.dataset.sure = "1"; t.textContent = "Wirklich beenden? Nochmal tippen"; setTimeout(() => { t.dataset.sure = ""; t.textContent = "Spiel beenden"; }, 3000); return; }
+    dartGame = null; saveDartGame(); return renderDarts();
+  }
+});
+$("#dart-guest").addEventListener("submit", e => {
+  e.preventDefault();
+  const name = $("#dart-guest-name").value.trim(); if (!name) return;
+  const key = "g:" + name.toLowerCase();
+  if (dartSetup.players.some(p => p.key === key)) return toast("Der ist schon dabei.");
+  if (dartSetup.players.length >= 8) return toast("Mehr als 8 Spieler gehen nicht.");
+  dartSetup.players.push({ key, name }); saveDartSetup();
+  $("#dart-guest-name").value = ""; renderDartSetup();
+});
+
 /* ---------- Navigation: Start, Termine, Prost, Chat, Mehr ---------- */
-const VIEWS = ["start", "termine", "prost", "chat", "snaps", "mehr", "neues", "gruppe", "wall", "memories", "anleitungen", "einstellungen", "admin"];
-const UNDER_MORE = { neues: 1, gruppe: 1, wall: 1, memories: 1, anleitungen: 1, einstellungen: 1, admin: 1 };
-const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", neues: "Neues", gruppe: "Gruppe", wall: "Wall of Fame", memories: "Memories", snaps: "Snaps", anleitungen: "Anleitungen", einstellungen: "Einstellungen", admin: "Admin" };
+const VIEWS = ["start", "termine", "prost", "chat", "snaps", "mehr", "neues", "gruppe", "wall", "memories", "darts", "anleitungen", "einstellungen", "admin"];
+const UNDER_MORE = { neues: 1, gruppe: 1, wall: 1, memories: 1, darts: 1, anleitungen: 1, einstellungen: 1, admin: 1 };
+const TITLES = { termine: "Termine", prost: "Prost", chat: "Chat", mehr: "Mehr", neues: "Neues", gruppe: "Gruppe", wall: "Wall of Fame", memories: "Memories", darts: "Dartzähler", snaps: "Snaps", anleitungen: "Anleitungen", einstellungen: "Einstellungen", admin: "Admin" };
 let currentView = "start";
 function updateHeader() {
   const inApp = !$("#screen-app").hidden;
@@ -1531,6 +1697,7 @@ function showView(name) {
   if (name === "neues" && me) markNewsRead();
   if (name === "memories" && me) { markMemSeen(); loadMemThumbs(); }
   if (name === "snaps" && me) refresh();
+  if (name === "darts" && me) renderDarts();
   if (name === "chat") { renderChat.done = false; if (S.messages) renderChat(); renderStatus(); }
   else { window.scrollTo({ top: 0 }); closeSheet(); setTyping(false); }
   updateChatBadge();

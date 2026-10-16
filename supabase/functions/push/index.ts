@@ -32,7 +32,7 @@ type Sub = { id: number; member_id: number; endpoint: string; p256dh: string; au
 
 // Prost: was jemand in der Hand hat
 const DRINKS: Record<string, string> = {
-  bier_klein: "ein kleines Bier (0,33 l)", bier: "ein Bier (0,5 l)", radler: "ein Radler", wein: "einen Wein", sekt: "einen Sekt", longdrink: "einen Longdrink",
+  bier_klein: "ein kleines Bier (0,33 l)", bier: "ein Bier (0,5 l)", mass: "eine Maß (1 l)", radler: "ein Radler", wein: "einen Wein", sekt: "einen Sekt", longdrink: "einen Longdrink",
   cocktail: "einen Cocktail", shot: "einen Shot", alkfrei: "was Alkoholfreies", wasser: "ein Wasser",
 };
 
